@@ -12,6 +12,7 @@ proves — *KEM* (post-quantum key exchange, beats harvest-now-decrypt-later) vs
 |---|---|
 | Date run | 2026-07-30 |
 | Host | macOS 26 (Tahoe), Apple Silicon (arm64) |
+| Linux | not yet run — see [`docs/linux-support.md`](docs/linux-support.md) for per-Debian/Ubuntu expected results (task #12) |
 | OpenSSL | 3.6.3 (`/opt/homebrew/bin/openssl`) — PATH `openssl` is miniconda 3.0.17 (no PQC), `/usr/bin/openssl` is LibreSSL |
 | Go | 1.26.2 |
 | Rust | 1.95.0 · rustls 0.23 + aws-lc-rs · tokio-rustls 0.26 |

@@ -24,7 +24,9 @@ pick_openssl() {
     fi
   done
   echo "ERROR: no PQC-capable openssl found (need >=3.5 with X25519MLKEM768)." >&2
-  echo "       Install with: brew install openssl@3" >&2
+  echo "       macOS: brew install openssl@3   (Homebrew's is 3.6.x)" >&2
+  echo "       Linux: needs a distro with OpenSSL >=3.5 (Ubuntu >=25.10 / Debian >=13);" >&2
+  echo "              older LTS ship 3.0.x -- use a container (alpine:3.22) or set OPENSSL=/path." >&2
   return 1
 }
 

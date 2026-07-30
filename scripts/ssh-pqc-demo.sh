@@ -15,7 +15,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 D="${SSH_DEMO_DIR:-$HERE/../ssh-demo}"
 PORT="${PORT:-2222}"
-KEX="mlkem768x25519-sha256"
+# Default to the standardized hybrid PQC KEX; override on older distros
+# (Ubuntu 24.04 / Debian 12) with KEX=sntrup761x25519-sha512@openssh.com
+KEX="${KEX:-mlkem768x25519-sha256}"
 SSHD="$(command -v sshd || echo /usr/sbin/sshd)"
 SSH="$(command -v ssh)"
 

@@ -83,5 +83,6 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 | 6 | Multi-arch containers | ✅ | — | ✗ (no Docker daemon) |
 | K1 | k3s PQC probe + analysis (`docs/k3s-pqc.md`) | ✅* | ❌ | ✗ (no cluster) |
 
-See [`EXPERIMENTS.md`](EXPERIMENTS.md) for captured output and
-[`docs/k3s-pqc.md`](docs/k3s-pqc.md) for the orchestrator support-level analysis.
+See [`EXPERIMENTS.md`](EXPERIMENTS.md) for captured output,
+[`docs/linux-support.md`](docs/linux-support.md) for per-Debian/Ubuntu expected
+results, and [`docs/k3s-pqc.md`](docs/k3s-pqc.md) for the orchestrator analysis.
