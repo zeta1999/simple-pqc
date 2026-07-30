@@ -1,0 +1,16 @@
+[package]
+name = "pqc-channel-demo"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "pqc-channel"
+path = "src/main.rs"
+
+[dependencies]
+# The app-layer PQC channel that already does PQC *authentication* today
+# (ML-DSA-65 pinned identities) -- ahead of X.509 ML-DSA in TLS.
+simple_network = { path = "../../simple-network", features = ["pqc"] }
+anyhow = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }

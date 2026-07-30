@@ -1,0 +1,8 @@
+# generated demo material
+/certs/
+/rust/target/
+/go/bin/
+*.log
+ssh-demo/
+certs-mldsa/
+/channel/target/

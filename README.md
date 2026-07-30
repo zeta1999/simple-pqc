@@ -1,0 +1,87 @@
+# simple-pqc
+
+Runnable demos of **post-quantum cryptography** in transport security: HTTPS /
+mTLS with a post-quantum KEM, in Rust and Go, plus PQC SSH. See
+[`PLAN.md`](PLAN.md) for the full roadmap and support-level analysis.
+
+## The one distinction that matters
+
+Every "PQC" claim is one of two things — each demo says which:
+
+| Property | Mechanism | Protects against | Status (2026) |
+|---|---|---|---|
+| **PQC KEM / KEX** | hybrid **X25519 + ML-KEM-768** (`0x11EC`) | harvest-now-decrypt-later | **default nearly everywhere** |
+| **PQC auth / PKI** | **ML-DSA** signatures in certs / SSH keys | quantum MITM / forgery | mostly experimental → 2027 |
+
+**Hybrid PQC/ECC** = the correct posture: PQC KEM for confidentiality, classical
+(Ed25519/ECDSA) auth for interoperable identity today.
+
+## What's implemented (Tracks 0–3): HTTPS/mTLS with a PQC KEM
+
+- **KEM: post-quantum** — TLS 1.3 pinned to `X25519MLKEM768`; endpoints **refuse**
+  any classical key exchange (no silent downgrade).
+- **Auth: classical** — Ed25519 mutual-TLS against a demo CA (the interoperable
+  "hybrid ECC/PQC" baseline). PQC *PKI* (ML-DSA certs) is a later track.
+
+```
+make interop      # build all, run the cross-language matrix, assert PQC everywhere
+```
+Expected:
+```
+client \ server  | go (:8443)         | rust (:9443)
+-----------------+--------------------+-------------------
+go               | X25519MLKEM768     | X25519MLKEM768
+rust             | X25519MLKEM768     | X25519MLKEM768
+openssl          | X25519MLKEM768     | X25519MLKEM768
+PASS: all pairs negotiated X25519MLKEM768 (PQC KEM).
+```
+
+### Other targets
+```
+make certs        # Track 0: Ed25519 mini-CA + server/client certs
+make run-go       # Go server + Go client, one round trip
+make run-rust     # Rust server + Rust client, one round trip
+make prove PORT=8443       # openssl proves PQC KEM is negotiated
+make prove-neg PORT=8443   # openssl proves a classical-only client is refused
+make ssh          # Track S: PQC SSH KEX to a non-root sshd (+ Secretive recipe)
+make mldsa        # Track 5 (experimental): fully-PQC mTLS with ML-DSA-65 certs
+make channel      # Track 4: simple-network PQC channel, ML-DSA-65 mutual auth
+make test         # run every locally-verifiable experiment (E5-E8)
+make docker       # Track 6: multi-arch images (needs a Docker daemon)
+make k3s-probe HOST=<node>   # Track K1: probe k3s for PQC KEM (needs a cluster)
+```
+
+All experiments, with their **real captured output**, are documented in
+[`EXPERIMENTS.md`](EXPERIMENTS.md).
+
+## Requirements
+
+- **OpenSSL ≥ 3.5** with `X25519MLKEM768`. On macOS the PATH `openssl` is often
+  miniconda's 3.0.17 (no PQC) and `/usr/bin/openssl` is LibreSSL — install
+  Homebrew's (`brew install openssl@3`); the scripts auto-select it.
+- **Go ≥ 1.24** (X25519MLKEM768 is default since 1.24; tested on 1.26).
+- **Rust** with the **aws-lc-rs** rustls provider (the `ring` provider has **no**
+  PQC). Uses rustls 0.23 + tokio-rustls 0.26.
+
+## Layout
+
+```
+scripts/  gen-ca.sh · prove-pqc.sh · interop.sh · openssl-env.sh
+go/       common/ · server/ · client/            (net/http over TLS 1.3)
+rust/     src/lib.rs · src/bin/{server,client}.rs (tokio-rustls)
+PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
+```
+
+## Status by track
+
+| Track | What | PQC KEM | PQC auth | Verified here |
+|---|---|:--:|:--:|:--:|
+| 0–3 | Rust/Go/openssl mTLS + interop | ✅ | classical | ✅ |
+| S | PQC SSH → non-root sshd (+ Secretive recipe) | ✅ | classical | ✅ |
+| 4 | simple-network channel (ML-DSA-65 mutual auth) | ✅ | ✅ | ✅ |
+| 5 | Fully-PQC mTLS, ML-DSA-65 certs (experimental) | ✅ | ✅ | ✅ |
+| 6 | Multi-arch containers | ✅ | — | ✗ (no Docker daemon) |
+| K1 | k3s PQC probe + analysis (`docs/k3s-pqc.md`) | ✅* | ❌ | ✗ (no cluster) |
+
+See [`EXPERIMENTS.md`](EXPERIMENTS.md) for captured output and
+[`docs/k3s-pqc.md`](docs/k3s-pqc.md) for the orchestrator support-level analysis.
