@@ -321,6 +321,39 @@ aws-lc-rs under emulation — ~59 s here, the bulk of the build. **Caveat:** amd
 was exercised under emulation on an arm64 host, which is not the same as a real
 amd64 machine.
 
+---
+
+## E13 — legacy-LTS reality check · `scripts/docker-linux-verify.sh 4` *(Track S3)*
+
+**Proves the negative**, which matters as much as the positives: on the LTS
+releases most fleets actually run, `mlkem` and ML-DSA are simply **not there** —
+but the pre-standard `sntrup761x25519-sha512@openssh.com` still gives
+harvest-now-decrypt-later resistance. Ubuntu 24.04 is supported to **2029**, so
+this is the migration reality, not a historical footnote.
+
+```
+-- ubuntu:24.04 --
+OpenSSH_9.6p1 Ubuntu-3ubuntu13.18, OpenSSL 3.0.13 30 Jan 2024
+confirmed: no mlkem768x25519-sha256
+confirmed: no X25519MLKEM768 in openssl
+S3_OK
+debug1: kex: algorithm: sntrup761x25519-sha512@openssh.com
+
+-- debian:12 --
+OpenSSH_9.2p1 Debian-2+deb12u10, OpenSSL 3.0.20 7 Apr 2026
+confirmed: no mlkem768x25519-sha256
+confirmed: no X25519MLKEM768 in openssl
+S3_OK
+debug1: kex: algorithm: sntrup761x25519-sha512@openssh.com
+```
+
+The check **fails loudly if a future image gains mlkem** ("docs need updating"),
+so it doubles as a tripwire on the version matrix rather than silently passing.
+Reproduce the fallback on such a host with:
+```
+KEX=sntrup761x25519-sha512@openssh.com ./scripts/ssh-pqc-demo.sh
+```
+
 ## Not yet run (need external infra)
 
 - **Track K2 (mesh)** — Linkerd/Istio on k3s, and Traefik PQC ingress
@@ -344,3 +377,4 @@ amd64 machine.
 | E10 | k3s apiserver probe (v1.36.2) | ✅ | ❌ | PASS (Track K1) |
 | E11 | full suite on Debian 13 arm64 | ✅ | ✅ | PASS (task #12) |
 | E12 | ML-DSA SSH auth, Debian sid | ✅ | ✅ | PASS (experimental, Track S4) |
+| E13 | legacy LTS (Ubuntu 24.04, Debian 12) | ⚠️ sntrup761 only | ❌ | PASS (Track S3) |

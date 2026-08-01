@@ -4,11 +4,11 @@ E1–E8 in `EXPERIMENTS.md` were verified on macOS. This is the **per-distro
 matrix** for Linux (arm64 + amd64), so a run on a Linux host can be checked
 against known-good values.
 
-**Status (task #12, 2026-08-01):** Debian 13 and Debian sid rows are now
-**measured** — the full suite passes on trixie (E11) and experimental ML-DSA SSH
-auth passes on sid (E12), both arm64 containers via
-`scripts/docker-linux-verify.sh`. Every other row is still *expected*, reasoned
-from package versions, not executed.
+**Status (task #12, 2026-08-01):** all versions in the table below are now
+**measured** in arm64 containers via `scripts/docker-linux-verify.sh`. Full
+handshakes ran on Debian 13 (E11), Debian sid ML-DSA SSH auth (E12), and the
+Ubuntu 24.04 / Debian 12 legacy fallback (E13); the Ubuntu 25.04–26.04 rows were
+capability-probed only (step 5), not handshaked.
 
 ## The key insight: what depends on distro packages, and what doesn't
 
@@ -37,23 +37,30 @@ Toolchain (packaged): **OpenSSH** needs ≥ 9.9 for `mlkem768x25519-sha256`
 (older ships only `sntrup761x25519-sha512@openssh.com` — still PQC, pre-standard).
 **OpenSSL** needs ≥ 3.5 for `X25519MLKEM768` and ML-DSA.
 
+Every version below is **measured**, not looked up — run
+`./scripts/docker-linux-verify.sh 5` to regenerate the sweep.
+
 | Distro | OpenSSH | mlkem KEX | OpenSSL | X25519MLKEM768 / ML-DSA | SSH track (E6) | openssl+ML-DSA (E4/E7) |
 |---|---|:--:|---|:--:|---|---|
-| **Ubuntu 24.04 LTS** (noble) | 9.6p1 | ❌ | 3.0.13 | ❌ | `sntrup761` fallback | ✗ (use container/build) |
-| **Ubuntu 25.04** (plucky) | 9.9 | ✅ (not default) | ~3.4 | ❌ | pin `mlkem…` | ✗ |
-| **Ubuntu 25.10** (questing) | 10.0p1 | ✅ default | ~3.5 | ✅ (verify) | ✅ | ✅ (verify) |
+| **Ubuntu 24.04 LTS** (noble) | 9.6p1 | ❌ | 3.0.13 | ❌ | `sntrup761` fallback — **verified (E13)** | ✗ (use container/build) |
+| **Ubuntu 25.04** (plucky) | 9.9p1 | ✅ present, not default | 3.4.1 | ❌ | pin `mlkem…` | ✗ |
+| **Ubuntu 25.10** (questing) | 10.0p2 | ✅ default | 3.5.3 | ✅ | ✅ | ✅ |
 | **Ubuntu 26.04 LTS** (resolute) | 10.2p1 | ✅ default | 3.5.5 | ✅ | ✅ | ✅ |
-| **Debian 12** (bookworm) | 9.2p1 | ❌ | 3.0.x | ❌ | `sntrup761` fallback | ✗ (use container/build) |
-| **Debian 13** (trixie) | **10.0p2** ✔measured | ✅ default | **3.5.6** ✔measured | ✅ | ✅ **verified (E11)** | ✅ **verified (E11)** |
-| **Debian sid** (unstable) | **10.4p1** ✔measured | ✅ default | **3.6.3** ✔measured | ✅ | ✅ **verified (E12)**, incl. experimental `mldsa44-ed25519` auth | ✅ |
+| **Debian 12** (bookworm) | 9.2p1 | ❌ | 3.0.20 | ❌ | `sntrup761` fallback — **verified (E13)** | ✗ (use container/build) |
+| **Debian 13** (trixie) | 10.0p2 | ✅ default | 3.5.6 | ✅ | ✅ **verified (E11)** | ✅ **verified (E11)** |
+| **Debian sid** (unstable) | 10.4p1 | ✅ default | 3.6.3 | ✅ | ✅ **verified (E12)**, incl. experimental `mldsa44-ed25519` auth | ✅ |
 
-✔measured = observed in the container run; the sid OpenSSL row previously read
-4.0.1, which was wrong (it is 3.6.3, the same version Homebrew ships).
+**mlkem / X25519MLKEM768 columns are probed capability** (`ssh -Q kex`,
+`openssl list -tls-groups`), so they say *available*, not *default* — that
+distinction is why the 25.04 row is called out separately. The **verified**
+labels mark rows where a full handshake actually ran; the rest were only
+capability-probed.
 
-OpenSSH per-distro from upstream research (2026-07); OpenSSL LTS/stable rows
-verified against packages.debian.org / launchpad. Intermediate non-LTS Ubuntu
-OpenSSL versions (24.10≈3.3, 25.04≈3.4, 25.10≈3.5) are approximate — **always
-confirm on the box**:
+Two earlier entries in this table were wrong and are corrected above: sid's
+OpenSSL is **3.6.3**, not 4.0.1, and Debian 13 / Ubuntu 25.10 ship OpenSSH
+**10.0p2**, not 10.0p1.
+
+Versions drift with point releases, so **confirm on the box**:
 ```
 openssl version            # need >= 3.5 for X25519MLKEM768 + ML-DSA
 ssh -V                     # need >= 9.9 for mlkem768x25519
