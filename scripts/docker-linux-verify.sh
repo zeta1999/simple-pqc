@@ -59,20 +59,29 @@ fi
 # --- [2] k3s control-plane PQC KEM probe -------------------------------------
 if [[ " $sel " == *" 2 "* ]]; then
   echo; echo "### [2] k3s (rancher/k3s) apiserver PQC KEM probe"
+  # k8s inherits PQC KEM from Go >= 1.24, which first ships in k8s >= 1.33.
+  # Liveness and the PQC assertion are probed SEPARATELY: an older k3s boots
+  # fine but offers no PQC group, and a combined probe reports that misleadingly
+  # as "apiserver did not come up" (measured: v1.31.5-k3s1 boots, no PQC group).
+  K3S_TAG="${K3S_TAG:-v1.36.2-k3s1}"
   docker rm -f pqc-k3s >/dev/null 2>&1 || true
   if docker run -d --name pqc-k3s --privileged -p 6443:6443 \
-       rancher/k3s:v1.36.2-k3s1 server --disable=traefik,servicelb,metrics-server >/dev/null 2>&1; then
-    echo "waiting for apiserver :6443 ..."
-    up=0; for i in $(seq 1 30); do
-      ( echo Q | "${OPENSSL_BIN:-openssl}" s_client -connect 127.0.0.1:6443 -tls1_3 -groups X25519MLKEM768 >/dev/null 2>&1 ) && { up=1; break; }
+       "rancher/k3s:$K3S_TAG" server --disable=traefik,servicelb,metrics-server >/dev/null 2>&1; then
+    echo "waiting for apiserver :6443 (rancher/k3s:$K3S_TAG) ..."
+    up=0; for i in $(seq 1 60); do
+      ( echo Q | "${OPENSSL_BIN:-openssl}" s_client -connect 127.0.0.1:6443 -tls1_3 >/dev/null 2>&1 ) && { up=1; break; }
       sleep 3
     done
     if [ $up -eq 1 ]; then
+      echo "apiserver is up; asserting PQC KEM"
       grp="$(echo Q | "${OPENSSL_BIN:-openssl}" s_client -connect 127.0.0.1:6443 -tls1_3 -groups X25519MLKEM768 2>&1 | grep -oE 'Negotiated TLS1.3 group: [A-Za-z0-9]+' | awk '{print $NF}' | head -1)"
-      echo "kube-apiserver :6443 -> ${grp:-<none>}"
-      if [ "$grp" = X25519MLKEM768 ]; then note+=("PASS [2] k3s apiserver negotiated X25519MLKEM768"); pass=$((pass+1))
-      else note+=("FAIL [2] k3s apiserver group=${grp:-none}"); fail=$((fail+1)); fi
-    else note+=("FAIL [2] k3s apiserver did not come up"); fail=$((fail+1)); fi
+      echo "kube-apiserver :6443 -> ${grp:-<none: PQC-only client was refused>}"
+      if [ "$grp" = X25519MLKEM768 ]; then note+=("PASS [2] k3s $K3S_TAG apiserver negotiated X25519MLKEM768"); pass=$((pass+1))
+      else note+=("FAIL [2] k3s $K3S_TAG offers no PQC group (needs k8s >= 1.33 / Go >= 1.24)"); fail=$((fail+1)); fi
+    else
+      echo "-- last container logs --"; docker logs pqc-k3s 2>&1 | tail -15
+      note+=("FAIL [2] k3s $K3S_TAG apiserver did not come up"); fail=$((fail+1))
+    fi
     docker rm -f pqc-k3s >/dev/null 2>&1 || true
   else note+=("FAIL [2] could not start k3s container"); fail=$((fail+1)); fi
 fi
