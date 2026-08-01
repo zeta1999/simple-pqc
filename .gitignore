@@ -7,3 +7,4 @@ ssh-demo/
 certs-mldsa/
 /channel/target/
 ssh-demo-s2/
+/rust-mldsa/target/
