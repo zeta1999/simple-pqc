@@ -261,10 +261,68 @@ the log is dumped. Composite = hybrid: an ed25519 signature alongside the ML-DSA
 one, so a break in the young primitive doesn't drop you below classical security.
 **Experimental:** sid/10.4 only; no LTS ships this.
 
+---
+
+## E9 — containerized endpoints · `scripts/docker-build.sh` *(Track 6)*
+
+**Proves:** the PQC mTLS endpoints keep both properties **inside containers** —
+distroless Go (9.7 MB) and Debian-slim Rust (32 MB), certs mounted at runtime.
+Not just "the image builds": every server was handshaked against.
+
+Host `openssl s_client` (3.6.3) → each containerized server:
+```
+--- host openssl -> 127.0.0.1:18443 (go) ---     --- 127.0.0.1:19443 (rust) ---
+Negotiated TLS1.3 group: X25519MLKEM768          Negotiated TLS1.3 group: X25519MLKEM768
+Protocol: TLSv1.3                                Protocol: TLSv1.3
+Verify return code: 0 (ok)                       Verify return code: 0 (ok)
+```
+
+Container→container, all four client/server pairs (clients run in a shared
+network namespace so the `CN=localhost` cert still verifies):
+```
+go client  -> go server      "kex":"X25519MLKEM768 (0x11ec)"
+rust client-> go server      "kex":"X25519MLKEM768 (0x11ec)"
+go client  -> rust server    "kex":"X25519MLKEM768"
+rust client-> rust server    "kex":"X25519MLKEM768"
+```
+
+Server-side, mutual auth confirmed (not just the KEM):
+```
+go PQC mTLS server on :8443  (require X25519MLKEM768 (0x11ec))
+served [::1]:58266  kex=X25519MLKEM768 (0x11ec)  peer_cn=demo-client
+rust PQC mTLS server on 0.0.0.0:9443  (require X25519MLKEM768)
+served  kex=X25519MLKEM768  peer=verified
+```
+
+### Both architectures
+
+`PLATFORMS=linux/amd64,linux/arm64 ./scripts/docker-build.sh` builds cleanly for
+both. The **amd64** images also run here under emulation and negotiate PQC:
+
+```
+--- amd64 container on :28443 (go) ---     --- :29443 (rust) ---
+Negotiated TLS1.3 group: X25519MLKEM768    Negotiated TLS1.3 group: X25519MLKEM768
+Verify return code: 0 (ok)                 Verify return code: 0 (ok)
+served  kex=X25519MLKEM768  peer=verified
+```
+
+| | arm64 | amd64 |
+|---|---|---|
+| go image | 9.7 MB (distroless) | 10.5 MB |
+| rust image | 31.8 MB (debian-slim) | 32.1 MB |
+| built | ✅ | ✅ |
+| handshake verified | ✅ native | ✅ **emulated** |
+
+Build notes: `docker buildx` cannot `--load` a multi-platform manifest, so each
+arch was loaded separately (`--platform linux/amd64 --load`, instant from cache)
+to run it. Go cross-compiles from the build platform (`--platform=$BUILDPLATFORM`
++ `GOARCH`); the Rust stage has no such pin, so the foreign arch compiles
+aws-lc-rs under emulation — ~59 s here, the bulk of the build. **Caveat:** amd64
+was exercised under emulation on an arm64 host, which is not the same as a real
+amd64 machine.
+
 ## Not yet run (need external infra)
 
-- **E9 — multi-arch containers** (`scripts/docker-build.sh`, `go/Dockerfile`,
-  `rust/Dockerfile`): written and reviewed but unbuilt.
 - **Track K2 (mesh)** — Linkerd/Istio on k3s, and Traefik PQC ingress
   termination: not attempted.
 - **Native (non-container) Linux and amd64:** E10–E12 ran in containers on an
@@ -282,7 +340,7 @@ one, so a break in the young primitive doesn't drop you below classical security
 | E6 | SSH to non-root sshd | ✅ | classical | PASS |
 | E7 | ML-DSA-65 mTLS (openssl) | ✅ | ✅ | PASS (experimental) |
 | E8 | simple-network channel | ✅ | ✅ | PASS (app-layer, today) |
-| E9 | multi-arch containers | — | — | not run |
+| E9 | multi-arch containers (arm64+amd64) | ✅ | classical | PASS |
 | E10 | k3s apiserver probe (v1.36.2) | ✅ | ❌ | PASS (Track K1) |
 | E11 | full suite on Debian 13 arm64 | ✅ | ✅ | PASS (task #12) |
 | E12 | ML-DSA SSH auth, Debian sid | ✅ | ✅ | PASS (experimental, Track S4) |

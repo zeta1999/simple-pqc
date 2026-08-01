@@ -85,14 +85,15 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 | S | PQC SSH → non-root sshd (+ Secretive recipe) | ✅ | classical | ✅ |
 | 4 | simple-network channel (ML-DSA-65 mutual auth) | ✅ | ✅ | ✅ |
 | 5 | Fully-PQC mTLS, ML-DSA-65 certs (experimental) | ✅ | ✅ | ✅ |
-| 6 | Multi-arch containers | ✅ | — | ✗ (unbuilt) |
+| 6 | Multi-arch containers (arm64 + amd64) | ✅ | classical | ✅ (amd64 emulated) |
 | K1 | k3s PQC probe + analysis (`docs/k3s-pqc.md`) | ✅ | ❌ | ✅ (v1.36.2, apiserver only) |
 | S4 | Experimental ML-DSA SSH auth (OpenSSH 10.4) | ✅ | ✅ | ✅ (Debian sid) |
 | — | Linux: full suite on Debian 13 arm64 | ✅ | ✅ | ✅ |
 
 Everything above was verified on macOS arm64; the Linux, k3s and S4 rows were
-verified in containers on that same host (`scripts/docker-linux-verify.sh`).
-No native amd64 machine was tested.
+verified in containers on that same host (`scripts/docker-linux-verify.sh`), and
+the amd64 container leg ran under emulation. **No native amd64 machine was
+tested** — that remains the one untested axis.
 
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for captured output,
 [`docs/linux-support.md`](docs/linux-support.md) for the per-Debian/Ubuntu
