@@ -12,7 +12,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 source "$HERE/openssl-env.sh" 2>/dev/null || true
-sel="${*:-1 2 3 4}"
+sel="${*:-1 2 3 4 5 6}"
 
 docker info >/dev/null 2>&1 || { echo "ERROR: Docker engine not reachable. Start Docker Desktop and retry."; exit 1; }
 echo "docker: $(docker version --format '{{.Server.Version}}')  host-arch: $(docker info --format '{{.Architecture}}')"
@@ -185,6 +185,56 @@ if [[ " $sel " == *" 5 "* ]]; then
     printf '%-18s %-34s %-14s %-7s %-7s\n' "$img" "${s:-?}" "${o:-?}" "${k:-?}" "${g:-?}"
   done
   note+=("INFO [5] capability matrix printed above (informational, no assertions)")
+fi
+
+# --- [6] Track S2: host ssh client -> linux container sshd, both arches -------
+# The real cross-platform leg: this machine's own ssh client against a Debian 13
+# sshd, PQC KEX pinned, on linux/arm64 AND linux/amd64 (the latter emulated).
+if [[ " $sel " == *" 6 "* ]]; then
+  S2D="$ROOT/ssh-demo-s2"
+  rm -rf "$S2D"; mkdir -p "$S2D"; chmod 700 "$S2D"
+  ssh-keygen -q -t ed25519 -N '' -f "$S2D/id_ed25519"
+  for arch in arm64 amd64; do
+    echo; echo "### [6] host ssh -> debian:13 sshd (linux/$arch), mlkem768x25519-sha256"
+    docker rm -f "pqc-sshd-$arch" >/dev/null 2>&1 || true
+    if ! docker run -d --name "pqc-sshd-$arch" --platform "linux/$arch" \
+         -p 12222:22 -v "$S2D/id_ed25519.pub":/tmp/authk:ro debian:13 bash -c '
+           export DEBIAN_FRONTEND=noninteractive
+           apt-get update -qq >/dev/null 2>&1
+           apt-get install -y -qq openssh-server >/dev/null 2>&1
+           mkdir -p /run/sshd /root/.ssh && chmod 700 /root/.ssh
+           cp /tmp/authk /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
+           printf "%s\n" "Port 22" "PermitRootLogin prohibit-password" \
+             "KexAlgorithms mlkem768x25519-sha256" "PasswordAuthentication no" \
+             "UsePAM no" "LogLevel VERBOSE" >> /etc/ssh/sshd_config
+           exec /usr/sbin/sshd -D -e' >/dev/null 2>&1; then
+      note+=("FAIL [6] linux/$arch sshd container did not start"); fail=$((fail+1)); continue
+    fi
+    # Wait for sshd to finish apt + bind. Probe the SSH banner, not a login:
+    # a login attempt fails auth and would never report ready.
+    up=0; for i in $(seq 1 60); do
+      if banner="$( (exec 3<>/dev/tcp/127.0.0.1/12222 && head -c 8 <&3) 2>/dev/null )" \
+         && [[ "$banner" == SSH-2.0* ]]; then up=1; break; fi
+      sleep 3
+    done
+    if [ $up -eq 0 ]; then
+      note+=("FAIL [6] linux/$arch sshd never became reachable"); fail=$((fail+1))
+      docker rm -f "pqc-sshd-$arch" >/dev/null 2>&1; continue
+    fi
+    out="$(ssh -F /dev/null -p 12222 -i "$S2D/id_ed25519" \
+        -o KexAlgorithms=mlkem768x25519-sha256 -o IdentitiesOnly=yes \
+        -o UserKnownHostsFile="$S2D/known_hosts_$arch" -o StrictHostKeyChecking=no \
+        -vv root@127.0.0.1 'echo S2_OK; uname -sm' 2>&1)"
+    echo "$out" | grep -E '^(S2_OK|Linux)' || true
+    echo "$out" | grep -m1 'kex: algorithm:' || true
+    if grep -q S2_OK <<<"$out" && grep -q 'kex: algorithm: mlkem768x25519-sha256' <<<"$out"; then
+      note+=("PASS [6] host ssh -> linux/$arch sshd over mlkem768x25519-sha256"); pass=$((pass+1))
+    else
+      note+=("FAIL [6] host ssh -> linux/$arch sshd"); fail=$((fail+1))
+    fi
+    docker rm -f "pqc-sshd-$arch" >/dev/null 2>&1 || true
+  done
+  echo "(key material left in $S2D for the Secretive variant; see PLAN.md Track S1)"
 fi
 
 echo; echo "======================================================================"

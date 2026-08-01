@@ -87,7 +87,10 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 | 5 | Fully-PQC mTLS, ML-DSA-65 certs (experimental) | ✅ | ✅ | ✅ |
 | 6 | Multi-arch containers (arm64 + amd64) | ✅ | classical | ✅ (amd64 emulated) |
 | K1 | k3s PQC probe + analysis (`docs/k3s-pqc.md`) | ✅ | ❌ | ✅ (v1.36.2, apiserver only) |
+| S2 | mac → linux sshd, arm64 + amd64 | ✅ | classical | ✅ |
+| S3 | Legacy LTS: no mlkem, `sntrup761` fallback | ⚠️ | ❌ | ✅ |
 | S4 | Experimental ML-DSA SSH auth (OpenSSH 10.4) | ✅ | ✅ | ✅ (Debian sid) |
+| S1 | Secretive Enclave auth + PQC KEX | ✅ | classical (hardware) | ✗ (interactive) |
 | — | Linux: full suite on Debian 13 arm64 | ✅ | ✅ | ✅ |
 
 Everything above was verified on macOS arm64; the Linux, k3s and S4 rows were

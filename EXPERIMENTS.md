@@ -354,6 +354,30 @@ Reproduce the fallback on such a host with:
 KEX=sntrup761x25519-sha512@openssh.com ./scripts/ssh-pqc-demo.sh
 ```
 
+---
+
+## E14 — cross-platform SSH, both arches · `scripts/docker-linux-verify.sh 6` *(Track S2)*
+
+**Proves:** this machine's **own** ssh client (OpenSSH 10.2p1, macOS) reaching a
+Debian 13 sshd over PQC KEX — on **linux/arm64 and linux/amd64**. E6 was
+mac→mac and E11 was linux→linux; this is the mac→linux leg that a real fleet
+looks like.
+
+```
+### host ssh -> debian:13 sshd (linux/arm64)     ### (linux/amd64)
+S2_OK                                            S2_OK
+Linux aarch64                                    Linux x86_64
+debug1: kex: algorithm: mlkem768x25519-sha256    debug1: kex: algorithm: mlkem768x25519-sha256
+```
+
+Auth is classical ed25519; the KEX is pinned so a classical fallback cannot
+happen silently. The generated key is left in `ssh-demo-s2/` so the **Secretive**
+variant (Track S1) can be run by hand: append `ssh-add -L` output to the
+container's `authorized_keys` and connect without `-i`, and Touch ID gates the
+signature inside the Secure Enclave. That step is interactive and stays manual.
+
+**amd64 caveat:** emulated on an arm64 host, as with E9 — not real hardware.
+
 ## Not yet run (need external infra)
 
 - **Track K2 (mesh)** — Linkerd/Istio on k3s, and Traefik PQC ingress
@@ -378,3 +402,4 @@ KEX=sntrup761x25519-sha512@openssh.com ./scripts/ssh-pqc-demo.sh
 | E11 | full suite on Debian 13 arm64 | ✅ | ✅ | PASS (task #12) |
 | E12 | ML-DSA SSH auth, Debian sid | ✅ | ✅ | PASS (experimental, Track S4) |
 | E13 | legacy LTS (Ubuntu 24.04, Debian 12) | ⚠️ sntrup761 only | ❌ | PASS (Track S3) |
+| E14 | mac→linux SSH, arm64 + amd64 | ✅ | classical | PASS (Track S2) |
