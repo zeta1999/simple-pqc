@@ -1,9 +1,14 @@
 # Linux support & expected results (Debian / Ubuntu)
 
-Everything in `EXPERIMENTS.md` was verified on macOS. This is the **per-distro
-expectation matrix** for native Linux (arm64 + amd64), so a run on a Linux host
-can be checked against known-good values. Nothing here has been executed yet —
-these are *expected* results with their reasoning; the actual run is task #12.
+E1–E8 in `EXPERIMENTS.md` were verified on macOS. This is the **per-distro
+matrix** for Linux (arm64 + amd64), so a run on a Linux host can be checked
+against known-good values.
+
+**Status (task #12, 2026-08-01):** Debian 13 and Debian sid rows are now
+**measured** — the full suite passes on trixie (E11) and experimental ML-DSA SSH
+auth passes on sid (E12), both arm64 containers via
+`scripts/docker-linux-verify.sh`. Every other row is still *expected*, reasoned
+from package versions, not executed.
 
 ## The key insight: what depends on distro packages, and what doesn't
 
@@ -16,10 +21,15 @@ these are *expected* results with their reasoning; the actual run is task #12.
 | E6 PQC SSH | ❌ | ✅ needs ≥9.9 for mlkem | version-sensitive |
 | E8 simple-network channel | ❌ | ❌ | **Yes** (pure Rust) |
 
-**So:** with a recent **Go (≥1.24)** and **Rust** toolchain installed, the
+**So:** with a recent **Go** and **Rust** toolchain installed, the
 Go/Rust/channel tracks (E2, E3, E8, and the Go/Rust cells of E5) pass on **any**
 of the distros below regardless of their system OpenSSL. Only the `openssl`-CLI
 proof, the ML-DSA cert track, and the SSH KEX track care about distro versions.
+
+**But mind the Go version twice over.** PQC KEM in `crypto/tls` needs only Go
+**≥1.24**; *this repo's* `go.mod` declares **`go 1.26`**, so an older toolchain
+refuses to build it at all. No distro packages 1.26 yet — Debian 13 ships 1.24 —
+so install upstream Go rather than `apt install golang-go` (this bit the E11 run).
 
 ## Per-distro versions & verdicts
 
@@ -34,8 +44,11 @@ Toolchain (packaged): **OpenSSH** needs ≥ 9.9 for `mlkem768x25519-sha256`
 | **Ubuntu 25.10** (questing) | 10.0p1 | ✅ default | ~3.5 | ✅ (verify) | ✅ | ✅ (verify) |
 | **Ubuntu 26.04 LTS** (resolute) | 10.2p1 | ✅ default | 3.5.5 | ✅ | ✅ | ✅ |
 | **Debian 12** (bookworm) | 9.2p1 | ❌ | 3.0.x | ❌ | `sntrup761` fallback | ✗ (use container/build) |
-| **Debian 13** (trixie) | 10.0p1 | ✅ default | 3.5.6 | ✅ | ✅ | ✅ |
-| **Debian sid** (unstable) | 10.4p1 | ✅ default | 4.0.1 | ✅ | ✅ (+ experimental `mldsa44-ed25519` auth) | ✅ |
+| **Debian 13** (trixie) | **10.0p2** ✔measured | ✅ default | **3.5.6** ✔measured | ✅ | ✅ **verified (E11)** | ✅ **verified (E11)** |
+| **Debian sid** (unstable) | **10.4p1** ✔measured | ✅ default | **3.6.3** ✔measured | ✅ | ✅ **verified (E12)**, incl. experimental `mldsa44-ed25519` auth | ✅ |
+
+✔measured = observed in the container run; the sid OpenSSL row previously read
+4.0.1, which was wrong (it is 3.6.3, the same version Homebrew ships).
 
 OpenSSH per-distro from upstream research (2026-07); OpenSSL LTS/stable rows
 verified against packages.debian.org / launchpad. Intermediate non-LTS Ubuntu
@@ -45,13 +58,13 @@ confirm on the box**:
 openssl version            # need >= 3.5 for X25519MLKEM768 + ML-DSA
 ssh -V                     # need >= 9.9 for mlkem768x25519
 ssh -Q kex | grep -E 'mlkem|sntrup'
-go version                 # need >= 1.24
+go version                 # >= 1.24 for PQC KEM; >= 1.26 to build this repo
 ```
 
 ## Expected results per track (native Linux)
 
-- **E2 / E3 / E8 / E5(Go,Rust cells)** — PASS on every distro above once Go 1.24+
-  and Rust are installed. Distro OpenSSL/OpenSSH irrelevant. The interop matrix's
+- **E2 / E3 / E8 / E5(Go,Rust cells)** — PASS on every distro above once Go 1.26+
+  and Rust are installed (measured on Debian 13, E11). Distro OpenSSL/OpenSSH irrelevant. The interop matrix's
   `openssl` row will show `<no handshake>`/blank on distros with OpenSSL < 3.5.
 - **E4 / E5(openssl cell) / E7 (ML-DSA)** — PASS on Ubuntu ≥25.10, Ubuntu 26.04,
   Debian ≥13, sid. On Ubuntu 24.04 / Debian 12 the scripts abort with the
@@ -73,9 +86,18 @@ go version                 # need >= 1.24
 - **sshd binary path:** on Debian/Ubuntu it's `/usr/sbin/sshd` (not in a normal
   user's PATH); `ssh-pqc-demo.sh` already falls back to it. Install with
   `apt-get install -y openssh-server`.
-- **Non-root sshd:** runs fine as a user on a high port; if it complains about a
-  missing privilege-separation dir, that only applies to root/privsep — the
-  user-run config here (`UsePAM no`, pubkey only) does not need `/run/sshd`.
+- **Non-root sshd:** runs fine as a user on a high port; the user-run config here
+  (`UsePAM no`, pubkey only) does not need `/run/sshd`. **In a container you are
+  usually root**, which *does* engage privsep — and Debian creates `/run/sshd`
+  via systemd-tmpfiles, which containers never run. `mkdir -p /run/sshd` first,
+  or sshd exits with `Missing privilege separation directory` (hit in E11/E12).
+- **`sshd -E logfile` hides startup failures.** Config errors go to the logfile,
+  not stderr, so a bad `sshd_config` looks like silence. Always `cat` the log on
+  a non-zero exit.
+- **ML-DSA SSH algorithm naming (OpenSSH 10.4):** the wire name is
+  `ssh-mldsa44-ed25519@openssh.com`. `ssh-keygen -t mldsa44-ed25519` takes the
+  short form, but `HostKeyAlgorithms` / `PubkeyAcceptedAlgorithms` reject it with
+  `Bad key types` — use the full `@openssh.com` name in config and `-o` flags.
 - **StrictModes:** same as macOS — the demo dir (700) and `authorized_keys`
   (600) perms must be tight or auth silently fails (the script sets these).
 - **aws-lc-rs build deps** (Rust track / container): `apt-get install -y cmake

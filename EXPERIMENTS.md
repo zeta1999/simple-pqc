@@ -12,7 +12,7 @@ proves — *KEM* (post-quantum key exchange, beats harvest-now-decrypt-later) vs
 |---|---|
 | Date run | 2026-07-30 |
 | Host | macOS 26 (Tahoe), Apple Silicon (arm64) |
-| Linux | not yet run — see [`docs/linux-support.md`](docs/linux-support.md) for per-Debian/Ubuntu expected results (task #12) |
+| Linux | verified 2026-08-01 in containers on the same host (Debian 13 / Debian sid, arm64) — see E10–E12 and [`docs/linux-support.md`](docs/linux-support.md) |
 | OpenSSL | 3.6.3 (`/opt/homebrew/bin/openssl`) — PATH `openssl` is miniconda 3.0.17 (no PQC), `/usr/bin/openssl` is LibreSSL |
 | Go | 1.26.2 |
 | Rust | 1.95.0 · rustls 0.23 + aws-lc-rs · tokio-rustls 0.26 |
@@ -189,13 +189,87 @@ PASS  E8 simple-network PQC channel (ML-DSA-65 auth)
 TOTAL: 4 passed, 0 failed
 ```
 
+---
+
+## E10 — k3s control-plane PQC KEM · `scripts/docker-linux-verify.sh 2` *(Track K1)*
+
+**Proves:** KEM = post-quantum on a **real kube-apiserver, with zero
+configuration** — it rides the Go toolchain. Auth stays classical (the cluster
+CA is ECDSA P-256; no orchestrator issues PQC certs yet).
+
+```
+### [2] k3s (rancher/k3s) apiserver PQC KEM probe
+waiting for apiserver :6443 ...
+kube-apiserver :6443 -> X25519MLKEM768
+PASS [2] k3s apiserver negotiated X25519MLKEM768
+```
+
+`rancher/k3s:v1.36.2-k3s1`, single node in Docker, `--disable=traefik,servicelb,metrics-server`,
+probed from the host with OpenSSL 3.6.3 `s_client -groups X25519MLKEM768`.
+**Version matters:** an earlier pin of v1.31.5 (Go 1.22, pre-dating the Go 1.24
+PQC default) would report a false negative. Traefik ingress and Linkerd
+(Track K2) remain unrun.
+
+---
+
+## E11 — full suite on Linux · `scripts/docker-linux-verify.sh 1` *(task #12)*
+
+**Proves:** E5–E8 reproduce on **Debian 13 (trixie), arm64** — i.e. none of the
+macOS results depend on macOS. Debian 13 ships OpenSSL 3.5.6 and OpenSSH 10.0p2,
+so the ML-DSA cert track and the mlkem SSH KEX work on **stock distro packages**.
+
+```
+-- versions --
+OpenSSL 3.5.6 7 Apr 2026 (Library: OpenSSL 3.5.6 7 Apr 2026)
+OpenSSH_10.0p2 Debian-7+deb13u4, OpenSSL 3.5.6 7 Apr 2026
+go version go1.26.5 linux/arm64
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+...
+PASS  E5 cross-language interop (Go/Rust/openssl, PQC KEM)
+PASS  E6 PQC SSH to non-root sshd (mlkem768x25519)
+PASS  E7 fully-PQC mTLS (ML-DSA-65 certs)
+PASS  E8 simple-network PQC channel (ML-DSA-65 auth)
+TOTAL: 4 passed, 0 failed
+```
+
+**Toolchain caveat found here:** `go.mod` requires **Go ≥ 1.26**, but Debian 13
+packages 1.24 — the harness installs the upstream Go tarball. Distro Go is *not*
+sufficient for this repo even though 1.24 is enough for the PQC KEM itself.
+
+---
+
+## E12 — experimental ML-DSA SSH auth on Linux · `scripts/docker-linux-verify.sh 3` *(Track S4)*
+
+**Proves BOTH properties for SSH:** KEM = `mlkem768x25519-sha256` **and** host +
+user auth = **ML-DSA-44 composite** (`ssh-mldsa44-ed25519@openssh.com`) — the
+classical-auth gap in SSH closing. Debian sid, OpenSSH 10.4p1.
+
+```
+OpenSSH_10.4p1 Debian-4, OpenSSL 3.6.3 9 Jun 2026
+-- client output --
+S4_OK
+debug1: kex: algorithm: mlkem768x25519-sha256
+debug1: Server host key: ssh-mldsa44-ed25519@openssh.com SHA256:RKvwcyfmuI6JwQIkTmNnRNyVRPJGvU9j3AdP4349dXE
+PASS [3] sid mldsa44-ed25519 SSH (PQC KEX + PQC auth)
+```
+
+**Naming gotcha:** the algorithm is `ssh-mldsa44-ed25519@openssh.com`. The bare
+`ssh-mldsa44-ed25519` is accepted by `ssh-keygen -t` but **rejected** by
+`HostKeyAlgorithms` / `PubkeyAcceptedAlgorithms` (`Bad key types`) — and because
+`sshd -E` diverts config errors into the logfile, that failure is silent unless
+the log is dumped. Composite = hybrid: an ed25519 signature alongside the ML-DSA
+one, so a break in the young primitive doesn't drop you below classical security.
+**Experimental:** sid/10.4 only; no LTS ships this.
+
 ## Not yet run (need external infra)
 
 - **E9 — multi-arch containers** (`scripts/docker-build.sh`, `go/Dockerfile`,
-  `rust/Dockerfile`): the **Docker daemon was down** during development. Files
-  are written and reviewed but unbuilt.
-- **E10 — k3s PQC probe** (`scripts/k3s-probe.sh`, `docs/k3s-pqc.md`): needs a
-  k3s/RKE2 cluster. Script + support-level analysis are written; unrun here.
+  `rust/Dockerfile`): written and reviewed but unbuilt.
+- **Track K2 (mesh)** — Linkerd/Istio on k3s, and Traefik PQC ingress
+  termination: not attempted.
+- **Native (non-container) Linux and amd64:** E10–E12 ran in containers on an
+  arm64 macOS host. Kernel-independent by nature, but a real amd64 box is
+  untested.
 
 ## Summary
 
@@ -208,5 +282,7 @@ TOTAL: 4 passed, 0 failed
 | E6 | SSH to non-root sshd | ✅ | classical | PASS |
 | E7 | ML-DSA-65 mTLS (openssl) | ✅ | ✅ | PASS (experimental) |
 | E8 | simple-network channel | ✅ | ✅ | PASS (app-layer, today) |
-| E9 | multi-arch containers | — | — | not run (no Docker daemon) |
-| E10 | k3s PQC probe | ✅* | ❌ | not run (no cluster) |
+| E9 | multi-arch containers | — | — | not run |
+| E10 | k3s apiserver probe (v1.36.2) | ✅ | ❌ | PASS (Track K1) |
+| E11 | full suite on Debian 13 arm64 | ✅ | ✅ | PASS (task #12) |
+| E12 | ML-DSA SSH auth, Debian sid | ✅ | ✅ | PASS (experimental, Track S4) |

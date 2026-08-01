@@ -38,8 +38,24 @@ k3s/RKE2/Rancher; the earliest realistic path is cert-manager after Go 1.27, i.e
 4. (Optional) Install Linkerd 2.19 → pod-to-pod mTLS is PQC by default; read its
    TLS-algorithm Prometheus metrics instead of capturing packets.
 
-## Not verified here
+## Verified (2026-08-01)
 
-This machine has no k3s cluster and the Docker daemon was down during
-development, so the probe and container tracks ship **unrun**. Everything under
-`EXPERIMENTS.md` E1–E8 *was* executed and captured.
+`scripts/docker-linux-verify.sh 2` brings up **`rancher/k3s:v1.36.2-k3s1`** as a
+single privileged container and probes `:6443` from the host:
+
+```
+kube-apiserver :6443 -> X25519MLKEM768
+```
+
+**PQC KEM on the control plane, with zero configuration** — exactly as predicted
+above. See `EXPERIMENTS.md` E10.
+
+**Pin a current k3s.** The probe originally used v1.31.5, built with Go 1.22 —
+before the Go 1.24 PQC default — which would have shown a false negative. The
+KEM story here is a property of the *toolchain the release was built with*, so
+always check the k3s version's Go version before drawing conclusions.
+
+## Still not verified here
+
+Traefik ingress termination, in-cluster workload mTLS, Linkerd/Istio (Track K2),
+and multi-node / amd64 clusters. Only the apiserver endpoint was probed.

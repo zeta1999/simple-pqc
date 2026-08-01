@@ -49,6 +49,9 @@ make channel      # Track 4: simple-network PQC channel, ML-DSA-65 mutual auth
 make test         # run every locally-verifiable experiment (E5-E8)
 make docker       # Track 6: multi-arch images (needs a Docker daemon)
 make k3s-probe HOST=<node>   # Track K1: probe k3s for PQC KEM (needs a cluster)
+
+./scripts/docker-linux-verify.sh        # Linux verification, all three steps
+./scripts/docker-linux-verify.sh 2      # just the k3s apiserver probe
 ```
 
 All experiments, with their **real captured output**, are documented in
@@ -59,7 +62,9 @@ All experiments, with their **real captured output**, are documented in
 - **OpenSSL ≥ 3.5** with `X25519MLKEM768`. On macOS the PATH `openssl` is often
   miniconda's 3.0.17 (no PQC) and `/usr/bin/openssl` is LibreSSL — install
   Homebrew's (`brew install openssl@3`); the scripts auto-select it.
-- **Go ≥ 1.24** (X25519MLKEM768 is default since 1.24; tested on 1.26).
+- **Go ≥ 1.26** to build this repo (`go.mod` says `go 1.26`). X25519MLKEM768
+  itself is default since **1.24** — but no distro packages 1.26 yet (Debian 13
+  ships 1.24), so install upstream Go, not `golang-go`.
 - **Rust** with the **aws-lc-rs** rustls provider (the `ring` provider has **no**
   PQC). Uses rustls 0.23 + tokio-rustls 0.26.
 
@@ -80,9 +85,15 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 | S | PQC SSH → non-root sshd (+ Secretive recipe) | ✅ | classical | ✅ |
 | 4 | simple-network channel (ML-DSA-65 mutual auth) | ✅ | ✅ | ✅ |
 | 5 | Fully-PQC mTLS, ML-DSA-65 certs (experimental) | ✅ | ✅ | ✅ |
-| 6 | Multi-arch containers | ✅ | — | ✗ (no Docker daemon) |
-| K1 | k3s PQC probe + analysis (`docs/k3s-pqc.md`) | ✅* | ❌ | ✗ (no cluster) |
+| 6 | Multi-arch containers | ✅ | — | ✗ (unbuilt) |
+| K1 | k3s PQC probe + analysis (`docs/k3s-pqc.md`) | ✅ | ❌ | ✅ (v1.36.2, apiserver only) |
+| S4 | Experimental ML-DSA SSH auth (OpenSSH 10.4) | ✅ | ✅ | ✅ (Debian sid) |
+| — | Linux: full suite on Debian 13 arm64 | ✅ | ✅ | ✅ |
+
+Everything above was verified on macOS arm64; the Linux, k3s and S4 rows were
+verified in containers on that same host (`scripts/docker-linux-verify.sh`).
+No native amd64 machine was tested.
 
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for captured output,
-[`docs/linux-support.md`](docs/linux-support.md) for per-Debian/Ubuntu expected
-results, and [`docs/k3s-pqc.md`](docs/k3s-pqc.md) for the orchestrator analysis.
+[`docs/linux-support.md`](docs/linux-support.md) for the per-Debian/Ubuntu
+matrix, and [`docs/k3s-pqc.md`](docs/k3s-pqc.md) for the orchestrator analysis.
