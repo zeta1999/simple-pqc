@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help certs go rust build run-go run-rust interop prove prove-neg ssh mldsa channel test docker k3s-probe clean
+.PHONY: help certs go rust build run-go run-rust interop prove prove-neg ssh mldsa mldsa-rust channel test docker k3s-probe linux-verify clean
 
 help: ## show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -43,8 +43,11 @@ prove-neg: ## prove a classical-only client is refused: make prove-neg PORT=8443
 ssh: ## Track S: PQC SSH to a non-root sshd (mlkem768x25519-sha256)
 	./scripts/ssh-pqc-demo.sh
 
-mldsa: ## Track 5 (experimental): fully-PQC mTLS with ML-DSA-65 certs
+mldsa: ## Track 5 (experimental): fully-PQC mTLS with ML-DSA-65 certs (openssl)
 	./scripts/mldsa-tls-demo.sh
+
+mldsa-rust: certs ## Track 5 (experimental): fully-PQC mTLS in Rust + openssl interop
+	./scripts/mldsa-rust-demo.sh
 
 channel: ## Track 4: simple-network PQC channel (ML-DSA-65 mutual auth) over TCP
 	cd channel && cargo run
@@ -55,8 +58,11 @@ test: ## run every locally-verifiable experiment (E5-E8) with a summary
 docker: ## Track 6: build multi-arch images (needs a running Docker daemon)
 	./scripts/docker-build.sh $(ARGS)
 
+linux-verify: ## Linux/k3s/SSH verification in containers (needs Docker): make linux-verify ARGS="1 2"
+	./scripts/docker-linux-verify.sh $(ARGS)
+
 k3s-probe: ## Track K1: probe a k3s node for PQC KEM (needs a cluster): make k3s-probe HOST=1.2.3.4
 	./scripts/k3s-probe.sh $(or $(HOST),127.0.0.1)
 
 clean: ## remove generated certs and build artifacts
-	rm -rf certs certs-mldsa go/bin rust/target channel/target ssh-demo
+	rm -rf certs certs-mldsa go/bin rust/target rust-mldsa/target channel/target ssh-demo ssh-demo-s2

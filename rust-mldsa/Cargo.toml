@@ -1,0 +1,32 @@
+[package]
+name = "simple-pqc-mldsa"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Track 5 (EXPERIMENTAL): fully post-quantum mTLS in Rust -- PQC KEM *and*
+# ML-DSA-65 certificate authentication. Deliberately a separate crate from
+# ../rust so the unstable aws-lc-rs surface cannot destabilise the E2/E3/E5
+# endpoints, which must keep building on stable rustls.
+
+[lib]
+name = "simple_pqc_mldsa"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mldsa-server"
+path = "src/bin/server.rs"
+
+[[bin]]
+name = "mldsa-client"
+path = "src/bin/client.rs"
+
+[dependencies]
+rustls = "0.23"
+# The ML-DSA signing key provider + webpki verification algorithms live behind
+# this feature; it pulls aws-lc-rs/unstable in turn. API may churn -- pinned.
+rustls-post-quantum = { version = "0.2.4", features = ["aws-lc-rs-unstable"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["aws-lc-rs"] }
+rustls-pemfile = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "io-util"] }
+anyhow = "1"

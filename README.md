@@ -45,8 +45,9 @@ make prove PORT=8443       # openssl proves PQC KEM is negotiated
 make prove-neg PORT=8443   # openssl proves a classical-only client is refused
 make ssh          # Track S: PQC SSH KEX to a non-root sshd (+ Secretive recipe)
 make mldsa        # Track 5 (experimental): fully-PQC mTLS with ML-DSA-65 certs
+make mldsa-rust   # Track 5 (experimental): the same in Rust, + openssl interop
 make channel      # Track 4: simple-network PQC channel, ML-DSA-65 mutual auth
-make test         # run every locally-verifiable experiment (E5-E8)
+make test         # run every locally-verifiable experiment (E5-E8, E15)
 make docker       # Track 6: multi-arch images (needs a Docker daemon)
 make k3s-probe HOST=<node>   # Track K1: probe k3s for PQC KEM (needs a cluster)
 
@@ -73,7 +74,8 @@ All experiments, with their **real captured output**, are documented in
 ```
 scripts/  gen-ca.sh · prove-pqc.sh · interop.sh · openssl-env.sh
 go/       common/ · server/ · client/            (net/http over TLS 1.3)
-rust/     src/lib.rs · src/bin/{server,client}.rs (tokio-rustls)
+rust/     src/lib.rs · src/bin/{server,client}.rs (tokio-rustls, stable)
+rust-mldsa/  same shape, ML-DSA-65 certs      (rustls-post-quantum, UNSTABLE)
 PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 ```
 
@@ -84,7 +86,8 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 | 0–3 | Rust/Go/openssl mTLS + interop | ✅ | classical | ✅ |
 | S | PQC SSH → non-root sshd (+ Secretive recipe) | ✅ | classical | ✅ |
 | 4 | simple-network channel (ML-DSA-65 mutual auth) | ✅ | ✅ | ✅ |
-| 5 | Fully-PQC mTLS, ML-DSA-65 certs (experimental) | ✅ | ✅ | ✅ |
+| 5 | Fully-PQC mTLS, ML-DSA-65 certs — openssl | ✅ | ✅ | ✅ |
+| 5 | Fully-PQC mTLS, ML-DSA-65 certs — Rust + interop | ✅ | ✅ | ✅ |
 | 6 | Multi-arch containers (arm64 + amd64) | ✅ | classical | ✅ (amd64 emulated) |
 | K1 | k3s PQC probe + analysis (`docs/k3s-pqc.md`) | ✅ | ❌ | ✅ (v1.36.2, apiserver only) |
 | S2 | mac → linux sshd, arm64 + amd64 | ✅ | classical | ✅ |
