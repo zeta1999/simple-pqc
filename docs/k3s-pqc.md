@@ -85,12 +85,13 @@ P-256, and cert-manager's ML-DSA support is blocked on Go 1.27.
 3.6.10, and Istio's `pqc` policy is present in **1.30.3** (documented in-binary
 as enforcing X25519MLKEM768 + TLS 1.3 + AES-GCM suites).
 
-## Multi-node control plane verified (2026-08-08)
+## Multi-node cluster verified (2026-08-08)
 
 `scripts/k1-multinode-verify.sh` (`make multinode`) brings up a **real two-node
 cluster** — `server` + `agent` on their own docker network, with **embedded
-etcd** via `--cluster-init` — and probes every control-plane endpoint from a
-third container:
+etcd** via `--cluster-init` — and covers both planes.
+
+### Control plane, probed from a third container
 
 ```
 agent0    Ready    <none>               v1.36.2+k3s1
@@ -110,8 +111,25 @@ the genuinely cross-node leg. **Still zero configuration.**
 has **no etcd listener at all**, so probing `:2379` against a stock k3s finds
 nothing listening — that is not a PQC failure, there is simply no etcd.
 
+### Cross-node pod traffic, captured inside the tunnel
+
+Section [2] of the same script installs Linkerd and pins the two ends to
+**different nodes**, forcing mesh mTLS through flannel's VXLAN encapsulation:
+
+```
+  whoami   10.42.1.4  agent0
+  xclient  10.42.0.5  server0
+  ServerHello (outer,inner): 172.20.0.2,10.42.0.4  172.20.0.3,10.42.1.3  4588
+```
+
+The `outer,inner` addresses are the proof: `172.20.0.x` are the two **nodes**,
+wrapping the two **pod** addresses. The handshake genuinely crossed the node
+boundary, and inside the tunnel the selected group is `4588` (X25519MLKEM768).
+
+**Gotcha:** Linkerd needs the Gateway API CRDs, which k3s installs *via its
+bundled Traefik*. Disabling Traefik removes them and `linkerd install` then
+renders nothing, failing with the misleading `no objects passed to apply`.
+
 ## Still not verified here
 
-Cross-node **pod** traffic (it rides flannel VXLAN, so a mesh capture would have
-to be taken inside the tunnel — E17/E18 proved mesh mTLS on a single node) and
-native amd64 silicon.
+Native amd64 silicon. Everything else in Tracks K1/K2 is now measured.

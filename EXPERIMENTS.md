@@ -564,16 +564,19 @@ genuinely untested axis.
 
 ---
 
-## E20 — two-node k3s: cross-node control plane · `./scripts/k1-multinode-verify.sh` *(Track K1)*
+## E20 — two-node k3s: cross-node control plane **and** data plane · `make multinode` *(Track K1)*
 
 **Proves:** KEM = post-quantum on **every control-plane endpoint of a real
-two-node cluster**, including a kubelet on a *different* node from the
-apiserver, and both etcd ports. Zero configuration. PKI stays classical.
+two-node cluster** (including a kubelet on a *different* node from the
+apiserver, and both etcd ports), **and** on pod↔pod mesh mTLS between pods on
+different nodes, captured inside the flannel VXLAN tunnel. Zero configuration.
+PKI stays classical.
 
 Every other k3s result in this repo is a single container, which never puts
 cross-node traffic on the wire. This runs `server` + `agent` on their own docker
-network with **embedded etcd** (`--cluster-init`) and probes from a third
-container:
+network with **embedded etcd** (`--cluster-init`).
+
+### [1] the control plane, probed from a third container
 
 ```
 $ ./scripts/k1-multinode-verify.sh
@@ -598,9 +601,39 @@ reached over the container network. This is the endpoint set PLAN Track K1 named
 default single-server k3s uses sqlite and has no etcd listener at all, so an
 etcd probe against a stock k3s isn't a failure — there is nothing listening.
 
-**Scope:** control plane only. Cross-node *pod* traffic is encapsulated in
-flannel VXLAN, so proving mesh mTLS between pods on different nodes needs the
-capture taken inside the tunnel — not done here.
+### [2] the data plane, inside the flannel VXLAN tunnel
+
+Section [2] installs Linkerd and pins the two ends to **different nodes** with
+`nodeSelector`, so the mesh mTLS is forced through flannel's VXLAN encapsulation:
+
+```
+  whoami-85b87494f-fcbwp     10.42.1.4    agent0
+  xclient                    10.42.0.5    server0
+  ClientHello offered      : 0x11ec,0x001d,0x0017,0x0018
+  ServerHello (outer,inner): 172.20.0.2,10.42.0.4  172.20.0.3,10.42.1.3  4588
+PASS [2] cross-node pod mTLS negotiated X25519MLKEM768 inside VXLAN
+```
+
+**Read the address field carefully — it is the whole proof.** tshark reports
+`outer,inner`: `172.20.0.2 → 172.20.0.3` are the two **nodes**, wrapping
+`10.42.0.4 → 10.42.1.3`, the two **pods**. That encapsulation is what shows the
+handshake genuinely crossed the node boundary instead of being served by a
+co-located pod — and inside it, the selected group is `4588`.
+
+**Three gotchas proven in testing:**
+1. **Linkerd needs the Gateway API CRDs**, which k3s normally installs *via its
+   bundled Traefik*. Disabling Traefik removes them, and `linkerd install` then
+   renders **nothing** — the apply fails with the misleading
+   `no objects passed to apply`.
+2. The **linkerd CLI renders against a live cluster**, so `:6443` has to be
+   published; a kubeconfig the host cannot reach produces the same empty output.
+3. tshark **decapsulates VXLAN by itself** (hence the `outer,inner` fields), but
+   it still does not know port 4143 is TLS — without `-d tcp.port==4143,tls` the
+   handshake is invisible.
+
+Without the `nodeSelector` pins the scheduler may co-locate both pods, and the
+traffic never enters the tunnel at all — the test would pass while proving
+nothing about cross-node behaviour.
 
 ---
 
@@ -608,9 +641,6 @@ capture taken inside the tunnel — not done here.
 
 - **Native amd64 hardware** — E19 covers the amd64 toolchain under emulation;
   real silicon is untested (no such machine available here).
-- **Cross-node pod-to-pod mesh traffic** — E20 covers the multi-node *control*
-  plane; E17/E18 proved mesh mTLS but on a single node. Pod traffic between
-  nodes rides flannel VXLAN and would need the capture taken inside the tunnel.
 - **Track S1 (Secretive)** — needs an interactive Touch ID tap, so it cannot be
   scripted; the recipe is in E6.
 
@@ -636,4 +666,4 @@ capture taken inside the tunnel — not done here.
 | E17 | Linkerd pod↔pod mTLS (PQC preferred) | ✅ | ❌ | PASS (Track K2) |
 | E18 | Istio `COMPLIANCE_POLICY=pqc` (PQC enforced) | ✅ | ❌ | PASS (experimental, Track K2) |
 | E19 | full suite on amd64 (emulated) | ✅ | ✅ | PASS |
-| E20 | two-node k3s control plane (5 endpoints) | ✅ | ❌ | PASS (Track K1) |
+| E20 | two-node k3s: control plane (5 endpoints) + cross-node pod mTLS | ✅ | ❌ | PASS (Track K1) |
