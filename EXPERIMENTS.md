@@ -10,15 +10,15 @@ proves — *KEM* (post-quantum key exchange, beats harvest-now-decrypt-later) vs
 
 | | |
 |---|---|
-| Date run | 2026-07-30 |
-| Host | macOS 26 (Tahoe), Apple Silicon (arm64) |
+| Date run | 2026-07-30; re-measured 2026-08-08 |
+| Host | macOS 26.5.2 (Tahoe), Apple Silicon (arm64) |
 | Linux | verified 2026-08-01 in containers on the same host (Debian 13 / Debian sid, arm64) — see E10–E12 and [`docs/linux-support.md`](docs/linux-support.md) |
 | amd64 | verified 2026-08-08 under emulation (E19) — no native amd64 silicon was tested |
 | Cluster | k3s v1.36.2 (single container; two-node for E20) · Traefik 3.7.4 · Linkerd edge-26.8.1 · Istio 1.30.3 — see E16–E18 and [`docs/k3s-pqc.md`](docs/k3s-pqc.md) |
-| OpenSSL | 3.6.3 (`/opt/homebrew/bin/openssl`) — PATH `openssl` is miniconda 3.0.17 (no PQC), `/usr/bin/openssl` is LibreSSL |
-| Go | 1.26.2 |
-| Rust | 1.95.0 · rustls 0.23 + aws-lc-rs · tokio-rustls 0.26 |
-| OpenSSH | client 10.2p1 (system) · sshd 10.4p1 (Homebrew) |
+| OpenSSL | **3.6.2** (`/opt/homebrew/bin/openssl`) — PATH `openssl` is miniconda 3.0.17 (no PQC), `/usr/bin/openssl` is LibreSSL. Floor is 3.5 |
+| Go | **1.25.6** driver; `go/go.mod` says `go 1.26` and `GOTOOLCHAIN=auto` fetches a 1.26 toolchain on demand. PQC floor is 1.24 |
+| Rust | 1.95.0 · rustls 0.23 + **aws-lc-rs** · tokio-rustls 0.26 (the `ring` provider has no PQC at any version) |
+| OpenSSH | Homebrew **10.0p2** (first on PATH) · Apple system **10.2p1**. Neither has ML-DSA — that needs 10.4, so E12 runs in a container. See [`docs/secretive-pqc-ssh.md`](docs/secretive-pqc-ssh.md) |
 
 ---
 
@@ -642,7 +642,8 @@ nothing about cross-node behaviour.
 - **Native amd64 hardware** — E19 covers the amd64 toolchain under emulation;
   real silicon is untested (no such machine available here).
 - **Track S1 (Secretive)** — needs an interactive Touch ID tap, so it cannot be
-  scripted; the recipe is in E6.
+  scripted. Full hands-on walkthrough:
+  [`docs/secretive-pqc-ssh.md`](docs/secretive-pqc-ssh.md).
 
 ## Summary
 

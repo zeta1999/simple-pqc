@@ -134,7 +134,7 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 | K2 | Traefik 3.7.4 PQC ingress termination | ✅ | ❌ | ✅ |
 | K2 | Linkerd pod↔pod mTLS — PQC **preferred** | ✅ | ❌ | ✅ (handshake captured) |
 | K2 | Istio `COMPLIANCE_POLICY=pqc` — PQC **enforced** | ✅ | ❌ | ✅ (experimental) |
-| S1 | Secretive Enclave auth + PQC KEX | ✅ | classical (hardware) | ✗ (interactive) |
+| S1 | Secretive Enclave auth + PQC KEX | ✅ | classical (hardware) | ✗ interactive — [walkthrough](docs/secretive-pqc-ssh.md) |
 | — | Linux: full suite on Debian 13 arm64 | ✅ | ✅ | ✅ |
 | — | Linux: full suite on amd64 | ✅ | ✅ | ✅ (emulated) |
 
@@ -152,4 +152,7 @@ refused outright. Default-on vs. enforced.
 
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for captured output,
 [`docs/linux-support.md`](docs/linux-support.md) for the per-Debian/Ubuntu
-matrix, and [`docs/k3s-pqc.md`](docs/k3s-pqc.md) for the orchestrator analysis.
+matrix, [`docs/k3s-pqc.md`](docs/k3s-pqc.md) for the orchestrator analysis, and
+[`docs/secretive-pqc-ssh.md`](docs/secretive-pqc-ssh.md) for the Secure-Enclave
+SSH walkthrough — which also documents **what to upgrade on a Mac** and what
+each upgrade actually unlocks.

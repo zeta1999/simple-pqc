@@ -3,6 +3,27 @@
 *Prepared 2026-07-29. Two Fable 5 research agents, web-verified against live sources
 and smoke-tested on this Mac (macOS 26 Tahoe, Apple Silicon).*
 
+> ## ✅ Status: this roadmap is done — see [`EXPERIMENTS.md`](EXPERIMENTS.md)
+>
+> Everything below was planned on 2026-07-29 and is now **built and measured**
+> (E1–E20, all passing). Read this file for the *reasoning and support-level
+> analysis*; read `EXPERIMENTS.md` for the *captured results*, which supersede
+> any version number or "not attempted" note here.
+>
+> | Planned | Where the result lives |
+> |---|---|
+> | Tracks 0–3 (Rust/Go/openssl mTLS + interop) | E1–E5 |
+> | Track S0–S4 (PQC SSH, legacy LTS, ML-DSA auth) | E6, E12–E14 |
+> | Track 4 (simple-network ML-DSA channel) | E8 |
+> | Track 5 (ML-DSA-65 mTLS, openssl + Rust) | E7, E15 |
+> | Track 6 (multi-arch containers) | E9, E19 |
+> | Track K1 (k3s, incl. **two-node** control + data plane) | E10, E20 |
+> | Track K2 (Traefik / Linkerd / Istio) | E16–E18 · [`docs/k3s-pqc.md`](docs/k3s-pqc.md) |
+> | Track S1 (Secretive Enclave) | **interactive** → [`docs/secretive-pqc-ssh.md`](docs/secretive-pqc-ssh.md) |
+>
+> **Still unverified:** native amd64 silicon (E19 is emulated). That is the only
+> untested axis. Track S1 needs a live Touch ID tap so it cannot be scripted.
+
 Scope: demoable **HTTPS-with-PQC** and **SSH-with-PQC**, doing **mTLS + PQC**, with
 **hybrid PQC/ECC** as the default posture. Rust + Go client/servers, plus SSH/sshd
 run as a local user, across linux arm64 / amd64 (Ubuntu/Debian) and mac silicon.

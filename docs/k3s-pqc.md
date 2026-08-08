@@ -1,6 +1,7 @@
 # PQC-izing k3s / Rancher / RKE2
 
-Status as of 2026-07 (see `PLAN.md` for the full stack table and sources).
+Status as of 2026-07, with versions corrected to what was **actually measured**
+on 2026-08-08 (see `PLAN.md` for the full stack table and sources).
 
 ## The split: KEM is free today, PKI is not
 
@@ -8,10 +9,10 @@ Status as of 2026-07 (see `PLAN.md` for the full stack table and sources).
 |---|---|---|
 | kube-apiserver ↔ kubelet ↔ etcd ↔ kubectl | ✅ **default, zero-config** via the Go 1.24+ toolchain | ❌ CAs are ECDSA P-256 |
 | k3s / RKE2 v1.36.2 (Go 1.25/1.26) | ✅ default | ❌ `dynamiclistener` CA has no PQC plans |
-| Traefik ≥3.5 (k3s bundles 3.6.10) | ✅ terminates PQC ingress out of the box | ❌ |
+| Traefik ≥3.5 (k3s v1.36.2 bundles **3.7.4**) | ✅ terminates PQC ingress out of the box — **measured**, E16 | ❌ |
 | Caddy ≥2.10 | ✅ | ❌ |
-| Linkerd 2.19 (rustls/aws-lc) | ✅ **default** pod↔pod mTLS; provable via `rustls_info` metrics | ❌ |
-| Istio 1.27 / Envoy | ⚠️ opt-in `COMPLIANCE_POLICY=pqc` (set in pilot **and** ztunnel) | ❌ |
+| Linkerd (verified on **edge-26.8.1**, rustls/aws-lc) | ✅ **default** pod↔pod mTLS, PQC *preferred* — **measured**, E17 | ❌ ECDSA P-256 workload certs |
+| Istio / Envoy (verified on **1.30.3**) | ⚠️ opt-in `COMPLIANCE_POLICY=pqc`, then PQC *enforced* — **measured**, E18 | ❌ |
 | ingress-nginx | (last v1.15.1) | ❌ **retired 2026-03-24 — don't use** |
 | cert-manager | n/a | ❌ ML-DSA blocked on **Go 1.27** (~Aug/Sep 2026); issue #8929 |
 
@@ -80,10 +81,6 @@ always check the k3s version's Go version before drawing conclusions.
 So: *Linkerd for "PQC by default, nothing to do"; Istio for "PQC or you don't
 connect."* Neither does PQC **identity** — Linkerd's workload certs are ECDSA
 P-256, and cert-manager's ML-DSA support is blocked on Go 1.27.
-
-**Correction to the table above:** k3s v1.36.2 bundles Traefik **3.7.4**, not
-3.6.10, and Istio's `pqc` policy is present in **1.30.3** (documented in-binary
-as enforcing X25519MLKEM768 + TLS 1.3 + AES-GCM suites).
 
 ## Multi-node cluster verified (2026-08-08)
 
