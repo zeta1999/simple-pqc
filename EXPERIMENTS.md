@@ -808,6 +808,80 @@ and is still unexportable, but signs silently. Full walkthrough:
 
 ---
 
+## E24 — hybrid (ML-DSA × classical) **identity**: works in SSH, absent in TLS
+
+**Proves:** the hybrid posture — where a flaw in the young PQC primitive cannot
+drop you below classical security — is available for *identity* **only in SSH
+today**. In X.509/TLS there is no composite signature at all.
+
+### Secrecy is already hybrid everywhere
+
+`X25519MLKEM768` is itself a hybrid: X25519 **+** ML-KEM-768. Every KEM result
+in this file (E2–E5, E10, E16–E20) is therefore already hybrid — an ML-KEM break
+leaves X25519 holding the line. Nothing to add.
+
+### Identity, SSH: hybrid and **proven** — it is what E21 runs
+
+`ssh-mldsa44-ed25519@openssh.com` is a *composite*: ML-DSA-44 **and** Ed25519,
+both carried, both verified. Decoding a real key and signature confirms it is
+genuinely two algorithms rather than a hybrid-sounding name:
+
+```
+public key blob field : 1344 B
+  ML-DSA-44 public key : 1312 B   (FIPS 204)
+  Ed25519   public key :   32 B   (RFC 8032)
+  sum                  : 1344 B   MATCH
+
+raw signature          : 2484 B
+  ML-DSA-44 signature  : 2420 B
+  Ed25519   signature  :   64 B
+  sum                  : 2484 B   MATCH
+```
+
+Exact on both counts. So **E21 is already the hybrid-identity result** — PQC KEM
+plus a signature that is simultaneously post-quantum and classical.
+
+### Identity, TLS/X.509: **not available**
+
+OpenSSL 3.6.3 knows only *pure* ML-DSA:
+
+```
+$ openssl list -signature-algorithms | grep -i mldsa
+  { 2.16.840.1.101.3.4.3.17, id-ml-dsa-44, ML-DSA-44, MLDSA44 } @ default
+  { 2.16.840.1.101.3.4.3.18, id-ml-dsa-65, ML-DSA-65, MLDSA65 } @ default
+  { 2.16.840.1.101.3.4.3.19, id-ml-dsa-87, ML-DSA-87, MLDSA87 } @ default
+
+$ openssl list -signature-algorithms | grep -ic composite
+0
+```
+
+Every composite name from draft-ietf-lamps-pq-composite-sigs is rejected:
+
+```
+MLDSA44-ECDSA-P256-SHA256    -> Error initializing ... context
+MLDSA44-Ed25519-SHA512       -> Error initializing ... context
+MLDSA65-ECDSA-P384-SHA512    -> Error initializing ... context
+```
+
+So E7/E15's ML-DSA-65 certificates are **pure PQC identity, not hybrid**: if
+ML-DSA were broken, those chains have no classical signature to fall back on.
+That is a deliberate trade and worth stating out loud — it is the one place in
+this repo where the posture is *not* hybrid.
+
+### Summary
+
+| Layer | Secrecy (KEM) | Identity (signature) |
+|---|---|---|
+| TLS / HTTPS | ✅ hybrid `X25519MLKEM768` | ⚠️ **pure** ML-DSA (E7/E15) or classical — no composite exists |
+| SSH | ✅ hybrid `mlkem768x25519-sha256` | ✅ **hybrid** `mldsa44-ed25519` (E21) |
+| Secure Enclave | n/a | ❌ pure ML-DSA, non-interoperable (E22) |
+
+**The gap is X.509.** SSH got composite signatures shipped in 10.4; TLS is still
+waiting on the LAMPS draft, and until then a PQC certificate means choosing
+between pure-PQC and classical rather than combining them.
+
+---
+
 ## Not yet run
 
 - **Native amd64 hardware** — E19 covers the amd64 toolchain under emulation;
@@ -841,3 +915,4 @@ and is still unexportable, but signs silently. Full walkthrough:
 | E21 | fully-PQC SSH natively on macOS (ML-DSA host + user key) | ✅ | ✅ | PASS (experimental, Track S4) |
 | E22 | Enclave ML-DSA-87 → OpenSSH 10.4 | ✅ | ❌ **non-interop** | PASS (measured negative, Track S5) |
 | E23 | Enclave P-256 auth over PQC KEX | ✅ | classical, **hardware-held** | PASS (interactive, Track S1) |
+| E24 | hybrid ML-DSA×classical identity: SSH yes, TLS no | ✅ hybrid | ✅ SSH / ❌ TLS | PASS (measured) |
