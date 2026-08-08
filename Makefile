@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help certs go rust build run-go run-rust interop prove prove-neg ssh mldsa mldsa-rust channel test docker k3s-probe linux-verify mesh multinode clean
+.PHONY: help certs go rust build run-go run-rust interop prove prove-neg ssh mldsa mldsa-rust channel mldsa-ssh test docker k3s-probe linux-verify mesh multinode clean
 
 help: ## show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -48,6 +48,9 @@ mldsa: ## Track 5 (experimental): fully-PQC mTLS with ML-DSA-65 certs (openssl)
 
 mldsa-rust: certs ## Track 5 (experimental): fully-PQC mTLS in Rust + openssl interop
 	./scripts/mldsa-rust-demo.sh
+
+mldsa-ssh: ## Track S4 (experimental): fully-PQC SSH, ML-DSA host+user keys (OpenSSH >= 10.4)
+	./scripts/mldsa-ssh-demo.sh
 
 channel: ## Track 4: simple-network PQC channel (ML-DSA-65 mutual auth) over TCP
 	cd channel && cargo run

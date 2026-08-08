@@ -20,13 +20,13 @@ disk. Every use requires a fingerprint.
 
 ---
 
-## 0. Prerequisites (all verified on this machine, 2026-08-08)
+## 0. Prerequisites (all verified on this machine, 2026-08-08, post-upgrade)
 
 ```
 $ ssh -V
-OpenSSH_10.0p2, OpenSSL 3.6.2          # Homebrew's, first on PATH
+OpenSSH_10.4p1, OpenSSL 3.6.3          # Homebrew's, first on PATH
 $ /usr/bin/ssh -V
-OpenSSH_10.2p1, LibreSSL 3.3.6         # Apple's system one
+OpenSSH_10.2p1, LibreSSL 3.3.6         # Apple's system one -- still 10.2
 
 $ ssh -Q kex | grep mlkem
 mlkem768x25519-sha256                  # needs OpenSSH >= 9.9
@@ -169,17 +169,17 @@ the **draft-sfluhrer** *pure* ML-DSA wire format, while OpenSSH implements the
 **composite** draft (`ssh-mldsa44-ed25519@openssh.com`). The two are not
 interoperable, and no OpenSSH server accepts the Secretive format.
 
-You can confirm your local OpenSSH knows nothing about ML-DSA at all:
+Apple's bundled `ssh` knows nothing about ML-DSA at all:
 
 ```
-$ ssh -Q key-sig | grep -c mldsa
+$ /usr/bin/ssh -Q key-sig | grep -c mldsa
 0
 ```
 
-Neither the Homebrew 10.0p2 nor Apple's 10.2p1 on this machine has it. The
-composite algorithm arrived in **OpenSSH 10.4**, which Homebrew does not ship
-yet — this repo verifies it in a Debian sid container instead (**E12**, Track
-S4), where `ssh -Q key-sig` does list `ssh-mldsa44-ed25519@openssh.com`.
+That is Apple's `/usr/bin/ssh` (10.2p1). Homebrew's is now **10.4p1** and does
+list `ssh-mldsa44-ed25519@openssh.com` — but that is the *composite* algorithm,
+which still cannot talk to Secretive's *pure* format. Upgrading gave this Mac
+two PQC SSH implementations that cannot talk to each other.
 
 So the honest closing statement is: **Enclave PQC authentication is hardware-
 ready and waiting on the IETF**, not on Apple. Until the drafts converge, the
@@ -190,16 +190,19 @@ hardware-gated classical auth.
 
 ## Upgrading this Mac
 
-Measured 2026-08-08 on macOS 26.5.2 (Tahoe), Apple Silicon. **Everything in this
-repo already passes at the current versions** — nothing below is required. The
-one upgrade that unlocks new capability is OpenSSH.
+Measured 2026-08-08 on macOS 26.5.2 (Tahoe), Apple Silicon. Everything in this
+repo passed *before* these upgrades too — the only one that unlocked new
+capability is OpenSSH.
 
-| Tool | Installed here | Available | Worth upgrading? |
+**These upgrades have since been applied on this machine.** The table records what it
+changed, and the reasoning stands for any other Mac.
+
+| Tool | Was | Now | Did it matter? |
 |---|---|---|---|
-| **OpenSSH** (brew) | 10.0p2_3 | **10.4p1** | **Yes** — this is the one that matters |
-| OpenSSL (brew `openssl@3`) | 3.6.2 | 3.6.3 | Optional, patch bump; 3.6.2 already has ML-KEM + ML-DSA |
-| Go (brew) | 1.25.6 | 1.26.5 | Optional — see the note below |
-| rustup | 1.28.2 | 1.29.0_2 | Optional; `rustc` here is 1.95.0 |
+| **OpenSSH** (brew) | 10.0p2_3 | **10.4p1** | **Yes** — unlocked ML-DSA SSH auth (E21) |
+| OpenSSL (brew `openssl@3`) | 3.6.2 | 3.6.3 | No — 3.6.2 already had ML-KEM + ML-DSA |
+| Go (brew) | 1.25.6 | 1.26.5 | No — see the note below |
+| rustup | 1.28.2 | 1.29.0_2 | No; `rustc` is 1.95.0 |
 | macOS | 26.5.2 | — | Already Tahoe, which is what Enclave ML-DSA needs |
 
 ### The upgrade that actually buys you something
@@ -216,10 +219,17 @@ ssh-mldsa44-ed25519@openssh.com
 ssh-mldsa44-ed25519-cert-v01@openssh.com
 ```
 
-That turns **Track S4 (E12)** from a container-only result into something you
-can run natively on this Mac — hardware-free, file-based **post-quantum SSH
-authentication**, on both ends. Today `ssh -Q key-sig | grep -c mldsa` returns
-`0` on both the Homebrew and the Apple ssh, which is why E12 runs in Debian sid.
+That turned **Track S4** from a container-only result (E12) into one that runs
+natively here — hardware-free, file-based **post-quantum SSH authentication** on
+both ends. It is now **E21**, `make mldsa-ssh`, and it passes:
+
+```
+PASS AUTH: host AND user authenticated with ML-DSA (ssh-mldsa44-ed25519@openssh.com)
+PASS: fully post-quantum SSH (PQC KEX + PQC auth), no classical fallback.
+```
+
+Before the upgrade, `ssh -Q key-sig | grep -c mldsa` returned `0` on both the
+Homebrew and the Apple ssh — which is why E12 had to run in Debian sid.
 
 Two caveats, both real:
 

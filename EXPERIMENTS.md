@@ -10,15 +10,15 @@ proves — *KEM* (post-quantum key exchange, beats harvest-now-decrypt-later) vs
 
 | | |
 |---|---|
-| Date run | 2026-07-30; re-measured 2026-08-08 |
+| Date run | 2026-07-30; re-measured 2026-08-08 **after a toolchain upgrade** |
 | Host | macOS 26.5.2 (Tahoe), Apple Silicon (arm64) |
 | Linux | verified 2026-08-01 in containers on the same host (Debian 13 / Debian sid, arm64) — see E10–E12 and [`docs/linux-support.md`](docs/linux-support.md) |
 | amd64 | verified 2026-08-08 under emulation (E19) — no native amd64 silicon was tested |
 | Cluster | k3s v1.36.2 (single container; two-node for E20) · Traefik 3.7.4 · Linkerd edge-26.8.1 · Istio 1.30.3 — see E16–E18 and [`docs/k3s-pqc.md`](docs/k3s-pqc.md) |
-| OpenSSL | **3.6.2** (`/opt/homebrew/bin/openssl`) — PATH `openssl` is miniconda 3.0.17 (no PQC), `/usr/bin/openssl` is LibreSSL. Floor is 3.5 |
-| Go | **1.25.6** driver; `go/go.mod` says `go 1.26` and `GOTOOLCHAIN=auto` fetches a 1.26 toolchain on demand. PQC floor is 1.24 |
+| OpenSSL | **3.6.3** (`/opt/homebrew/bin/openssl`) — PATH `openssl` is miniconda 3.0.17 (no PQC), `/usr/bin/openssl` is LibreSSL. Floor is 3.5 |
+| Go | **1.26.5**. PQC floor is 1.24 (`X25519MLKEM768` default since then) |
 | Rust | 1.95.0 · rustls 0.23 + **aws-lc-rs** · tokio-rustls 0.26 (the `ring` provider has no PQC at any version) |
-| OpenSSH | Homebrew **10.0p2** (first on PATH) · Apple system **10.2p1**. Neither has ML-DSA — that needs 10.4, so E12 runs in a container. See [`docs/secretive-pqc-ssh.md`](docs/secretive-pqc-ssh.md) |
+| OpenSSH | Homebrew **10.4p1** (first on PATH, **has ML-DSA**) · Apple system **10.2p1** (no ML-DSA — Homebrew never replaces it, so PATH order decides). See [`docs/secretive-pqc-ssh.md`](docs/secretive-pqc-ssh.md) |
 
 ---
 
@@ -637,6 +637,55 @@ nothing about cross-node behaviour.
 
 ---
 
+## E21 — fully post-quantum SSH, natively on macOS · `make mldsa-ssh` *(Track S4, EXPERIMENTAL)*
+
+**Proves BOTH properties in SSH, with no classical fallback anywhere:** the KEX
+is `mlkem768x25519-sha256` **and** the host key **and** the user key are
+composite ML-DSA. This is E12's result, but on the Mac rather than in a
+container — it became possible only after upgrading Homebrew's OpenSSH to
+**10.4p1** (10.0p2 has the PQC KEX but no ML-DSA signatures at all).
+
+```
+$ ./scripts/mldsa-ssh-demo.sh
+ssh : OpenSSH_10.4p1, OpenSSL 3.6.3
+== client output ==
+S4_OK
+Darwin arm64
+== handshake facts ==
+debug1: kex: algorithm: mlkem768x25519-sha256
+debug1: Server host key: ssh-mldsa44-ed25519@openssh.com SHA256:SPLCNdfNlK0ou6f/lSukZnouQcLn0HNS0+MlLDe92HE
+debug1: Server accepts key: .../userkey MLDSA44-ED25519 SHA256:KcphWj9Fp1rqXIVkHE/ti3qAkc6uFZJw/1AYb+md6AA
+Authenticated to 127.0.0.1 ([127.0.0.1]:2223) using "publickey".
+PASS KEM : mlkem768x25519-sha256 negotiated
+PASS AUTH: host AND user authenticated with ML-DSA (ssh-mldsa44-ed25519@openssh.com)
+PASS: fully post-quantum SSH (PQC KEX + PQC auth), no classical fallback.
+```
+
+The config pins `HostKeyAlgorithms` and `PubkeyAcceptedAlgorithms` to the ML-DSA
+algorithm alone, so there is nothing classical left to negotiate — a peer
+without it fails rather than quietly downgrading.
+
+**Gotcha proven in testing — StrictModes checks every *parent* directory.**
+The first attempt put the demo dir under `TMPDIR` and auth failed with the
+client showing only `Permission denied (publickey)`. The server log had the real
+reason:
+
+```
+Authentication refused: bad ownership or modes for directory /private/tmp
+```
+
+`/tmp` is world-writable (1777), and that is enough — the keys and the demo dir
+had perfect `600`/`700` modes. The script keeps its state under the repo (i.e.
+under `$HOME`) for exactly this reason. This is a *different* instance of the
+StrictModes trap from E6, and a nastier one: nothing you can chmod fixes it.
+
+**Scope:** EXPERIMENTAL. `mldsa44-ed25519` is a composite draft, off by default
+upstream, and needs **10.4 on both ends**. It is a *file*-key scheme — the
+Secure Enclave cannot hold these; see
+[`docs/secretive-pqc-ssh.md`](docs/secretive-pqc-ssh.md).
+
+---
+
 ## Not yet run
 
 - **Native amd64 hardware** — E19 covers the amd64 toolchain under emulation;
@@ -668,3 +717,4 @@ nothing about cross-node behaviour.
 | E18 | Istio `COMPLIANCE_POLICY=pqc` (PQC enforced) | ✅ | ❌ | PASS (experimental, Track K2) |
 | E19 | full suite on amd64 (emulated) | ✅ | ✅ | PASS |
 | E20 | two-node k3s: control plane (5 endpoints) + cross-node pod mTLS | ✅ | ❌ | PASS (Track K1) |
+| E21 | fully-PQC SSH natively on macOS (ML-DSA host + user key) | ✅ | ✅ | PASS (experimental, Track S4) |
