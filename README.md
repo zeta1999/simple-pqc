@@ -151,6 +151,9 @@ offers `0x11ec,0x001d,0x0017,0x0018` — PQC first, classical still available.
 Istio in `pqc` mode offers **only** `0x11ec`, so a classical-only client is
 refused outright. Default-on vs. enforced.
 
+**On a Mac, start with [`README.quick.mac.md`](README.quick.mac.md)** — install,
+the three silent PATH traps, and the gotchas that waste an afternoon.
+
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for captured output,
 [`docs/linux-support.md`](docs/linux-support.md) for the per-Debian/Ubuntu
 matrix, [`docs/k3s-pqc.md`](docs/k3s-pqc.md) for the orchestrator analysis, and

@@ -863,6 +863,19 @@ MLDSA44-Ed25519-SHA512       -> Error initializing ... context
 MLDSA65-ECDSA-P384-SHA512    -> Error initializing ... context
 ```
 
+**Same on Linux — this is upstream OpenSSL, not a macOS or Homebrew quirk.**
+Measured across three distros:
+
+| Image | OpenSSL | pure ML-DSA | composite |
+|---|---|:--:|:--:|
+| `ubuntu:26.04` | 3.5.5 | 3 | **0** |
+| `debian:13` | 3.5.6 | 3 | **0** |
+| `debian:sid` | 3.6.3 | 3 | **0** |
+
+All three reject `MLDSA44-ECDSA-P256-SHA256` at keygen, exactly as macOS does.
+Upgrading the distro or the OpenSSL patch level will not change this; composite
+support has to land upstream first.
+
 So E7/E15's ML-DSA-65 certificates are **pure PQC identity, not hybrid**: if
 ML-DSA were broken, those chains have no classical signature to fall back on.
 That is a deliberate trade and worth stating out loud — it is the one place in
