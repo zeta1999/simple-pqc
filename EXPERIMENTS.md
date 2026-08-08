@@ -686,6 +686,75 @@ Secure Enclave cannot hold these; see
 
 ---
 
+## E22 — Track S5: Enclave ML-DSA-87 is **not** interoperable · *(measured negative)*
+
+**Proves:** the KEM half works, and the PQC-**auth** half genuinely does not —
+a real Secure-Enclave ML-DSA-87 key from Secretive 3.0.2 cannot authenticate to
+OpenSSH 10.4p1. Previously this repo *asserted* the incompatibility from reading
+the drafts; this is the measurement.
+
+Setup: throwaway sshd on `127.0.0.1:2224`, KEX pinned to
+`mlkem768x25519-sha256`, and the Enclave's `ssh-mldsa-87` public key placed in
+`authorized_keys`. Client connects through Secretive's agent, no `-i`.
+
+```
+debug1: kex: algorithm: mlkem768x25519-sha256          <- PQC KEM: fine
+debug1: get_agent_identities: agent returned 4 keys
+debug1: Will attempt key: renaudb1999@gmail.com ECDSA ...
+debug1: Will attempt key: GITHUB@secretive.phoenix.local ECDSA ...
+debug1: Will attempt key: You are just a number ECDSA ...
+debug1: Will attempt key: cicd ECDSA ...
+                                                       <- no ML-DSA key, at all
+Received disconnect from 127.0.0.1 port 2224:2: Too many authentication failures
+```
+
+**It fails twice over, for independent reasons:**
+
+1. **Secretive does not serve the key over the agent socket.** `ssh-add -L` and
+   the agent handshake both return **4 keys, all `ecdsa-sha2-nistp256`**. The
+   ML-DSA-87 secret exists in Secretive, but the SSH agent protocol never
+   offers it — so the client has nothing to present.
+2. **Neither end knows the algorithm name.** `ssh -Q key` on 10.4p1 lists only
+   `ssh-mldsa44-ed25519@openssh.com` (the *composite* draft). The key's blob
+   header is `ssh-mldsa-87` — the *pure* draft-sfluhrer format. The client never
+   listed it under `Will attempt key`, and **sshd silently ignored the
+   `authorized_keys` line**: the server log never mentions ML-DSA at all, it
+   just reports the six classical keys failing.
+
+That silence is the trap. A key the server cannot parse produces **no error
+anywhere** — `sshd -t` validated the config, startup logged nothing, and the
+only symptom is a generic auth failure. Nothing tells you the key was skipped.
+
+**Bonus finding — the composite algorithm is off by default, confirmed.** The
+server advertised:
+
+```
+server-sig-algs=<ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,
+                 ecdsa-sha2-nistp521,sk-ssh-ed25519@openssh.com,
+                 sk-ecdsa-sha2-nistp256@openssh.com,rsa-sha2-512,rsa-sha2-256,
+                 webauthn-sk-ecdsa-sha2-nistp256@openssh.com>
+```
+
+No ML-DSA — on a stock **10.4p1** sshd that *does* implement it. It must be
+enabled explicitly via `PubkeyAcceptedAlgorithms`, which is exactly what E21's
+script does. The upgrade alone buys you nothing here.
+
+**Also observed:** `ssh_agent_bind_hostkey: agent refused operation` — Secretive
+does not implement OpenSSH's session-binding extension. Harmless (ssh falls
+back), but it means that agent-forwarding hardening is unavailable.
+
+**Practical note:** with 4 agent keys plus file keys the client burned through
+`MaxAuthTries` (6) and was disconnected before exhausting its list. Add
+`-o IdentitiesOnly=yes -o IdentityAgent=none` when testing one specific key, or
+the failure you see is "too many attempts" rather than the one you meant.
+
+**Verdict:** Enclave PQC authentication is **hardware-ready and blocked on the
+IETF**, not on Apple, Secretive, or OpenSSH versions. Until the pure and
+composite drafts converge, the deployable posture is E6/S1 — PQC KEX plus
+hardware-gated *classical* auth.
+
+---
+
 ## Not yet run
 
 - **Native amd64 hardware** — E19 covers the amd64 toolchain under emulation;
@@ -718,3 +787,4 @@ Secure Enclave cannot hold these; see
 | E19 | full suite on amd64 (emulated) | ✅ | ✅ | PASS |
 | E20 | two-node k3s: control plane (5 endpoints) + cross-node pod mTLS | ✅ | ❌ | PASS (Track K1) |
 | E21 | fully-PQC SSH natively on macOS (ML-DSA host + user key) | ✅ | ✅ | PASS (experimental, Track S4) |
+| E22 | Enclave ML-DSA-87 → OpenSSH 10.4 | ✅ | ❌ **non-interop** | PASS (measured negative, Track S5) |

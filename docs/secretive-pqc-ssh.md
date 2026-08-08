@@ -169,6 +169,23 @@ the **draft-sfluhrer** *pure* ML-DSA wire format, while OpenSSH implements the
 **composite** draft (`ssh-mldsa44-ed25519@openssh.com`). The two are not
 interoperable, and no OpenSSH server accepts the Secretive format.
 
+**This has been measured, not just read off the drafts — see E22.** A real
+Enclave `ssh-mldsa-87` key was placed in a demo server's `authorized_keys` and
+the connection attempted through Secretive's agent. It fails for *two*
+independent reasons:
+
+1. **The agent never offers it.** `ssh-add -L` and the agent handshake both
+   return only the ECDSA P-256 keys. The ML-DSA secret is in Secretive, but the
+   SSH agent protocol does not surface it, so the client has nothing to present.
+2. **Neither end knows the name.** The client never lists it under
+   `Will attempt key`, and **sshd silently ignores the `authorized_keys` line** —
+   the server log never mentions ML-DSA at all.
+
+That second point is worth internalising: a key the server cannot parse produces
+**no error anywhere**. `sshd -t` passes, startup is clean, and all you get is a
+generic `Permission denied`. If you are debugging this, that silence is the
+signal.
+
 Apple's bundled `ssh` knows nothing about ML-DSA at all:
 
 ```
@@ -180,6 +197,10 @@ That is Apple's `/usr/bin/ssh` (10.2p1). Homebrew's is now **10.4p1** and does
 list `ssh-mldsa44-ed25519@openssh.com` — but that is the *composite* algorithm,
 which still cannot talk to Secretive's *pure* format. Upgrading gave this Mac
 two PQC SSH implementations that cannot talk to each other.
+
+And even the composite one is **off by default**: a stock 10.4p1 sshd advertises
+`server-sig-algs` with no ML-DSA in it. It has to be enabled explicitly with
+`PubkeyAcceptedAlgorithms` (E21 does this). Upgrading alone changes nothing.
 
 So the honest closing statement is: **Enclave PQC authentication is hardware-
 ready and waiting on the IETF**, not on Apple. Until the drafts converge, the

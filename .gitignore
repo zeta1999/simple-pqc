@@ -9,3 +9,4 @@ certs-mldsa/
 ssh-demo-s2/
 /rust-mldsa/target/
 /ssh-demo-s4/
+/ssh-demo-s5/
