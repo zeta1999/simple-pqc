@@ -755,13 +755,65 @@ hardware-gated *classical* auth.
 
 ---
 
+## E23 — Track S1: Secure-Enclave auth over a PQC KEX · *(interactive, captured 2026-08-09)*
+
+**Proves BOTH deployable properties on real hardware:** the session key is
+hybrid post-quantum, and the identity key lives in the **Secure Enclave** and
+cannot be exported. This is the strongest posture that actually interoperates
+today — contrast E22, where the PQC *identity* option does not.
+
+Setup: throwaway sshd on `127.0.0.1:2225`, KEX pinned to
+`mlkem768x25519-sha256`, Secretive's Enclave P-256 keys in `authorized_keys`.
+Client connects through the agent — **no `-i`, no private key on disk.**
+
+Client:
+```
+debug1: kex: algorithm: mlkem768x25519-sha256
+debug1: get_agent_identities: agent returned 4 keys
+debug1: Offering public key: renaudb1999@gmail.com ECDSA SHA256:xFjDeZr0Zpo... agent
+debug1: Server accepts key: renaudb1999@gmail.com ECDSA SHA256:xFjDeZr0Zpo... agent
+Authenticated to 127.0.0.1 ([127.0.0.1]:2225) using "publickey".
+Darwin arm64
+debug1: Exit status 0
+```
+
+Server:
+```
+Accepted key ECDSA SHA256:xFjDeZr0Zpo... found at .../ssh-demo-s1/authorized_keys:1
+Accepted publickey for bechaderenaud from 127.0.0.1 port 53418 ssh2: ECDSA SHA256:xFjDeZr0Zpo...
+```
+
+The `agent` suffix on the offered key is the whole point: the private half was
+never read from a file, because there is no file. The signature was produced
+**inside the Enclave** and only the result crossed the socket.
+
+**Why this is not in `make test`.** It cannot be automated without disabling
+what it demonstrates — the Enclave gates signing on user presence. Whether a
+Touch ID prompt fires depends on the individual secret's **Require
+Authentication** setting; a key created without it still lives in the Enclave
+and is still unexportable, but signs silently. Full walkthrough:
+[`docs/secretive-pqc-ssh.md`](docs/secretive-pqc-ssh.md).
+
+**Two gotchas worth carrying over from E22's failure:**
+1. **`MaxAuthTries`.** A populated agent plus `~/.ssh` file keys can exceed the
+   default of 6 before reaching the key you want, and the client is dropped with
+   `Too many authentication failures` — which looks like rejection, not
+   exhaustion. This server sets `MaxAuthTries 20`; on a real one use
+   `-o IdentitiesOnly=yes`.
+2. **Keep the remote command on one line.** A wrapped paste split
+   `'echo ENCLAVE_PQC_OK; uname -sm'` across lines, so the remote shell ran a
+   bare `echo` and then reported `command not found: ENCLAVE_PQC_OK`. The
+   `uname` output and `Exit status 0` show the session itself was fine — but it
+   reads like a failure at a glance.
+
+---
+
 ## Not yet run
 
 - **Native amd64 hardware** — E19 covers the amd64 toolchain under emulation;
   real silicon is untested (no such machine available here).
-- **Track S1 (Secretive)** — needs an interactive Touch ID tap, so it cannot be
-  scripted. Full hands-on walkthrough:
-  [`docs/secretive-pqc-ssh.md`](docs/secretive-pqc-ssh.md).
+- *(Track S1 is now captured in E23 — it stays out of `make test` because it
+  cannot be automated, not because it is unverified.)*
 
 ## Summary
 
@@ -788,3 +840,4 @@ hardware-gated *classical* auth.
 | E20 | two-node k3s: control plane (5 endpoints) + cross-node pod mTLS | ✅ | ❌ | PASS (Track K1) |
 | E21 | fully-PQC SSH natively on macOS (ML-DSA host + user key) | ✅ | ✅ | PASS (experimental, Track S4) |
 | E22 | Enclave ML-DSA-87 → OpenSSH 10.4 | ✅ | ❌ **non-interop** | PASS (measured negative, Track S5) |
+| E23 | Enclave P-256 auth over PQC KEX | ✅ | classical, **hardware-held** | PASS (interactive, Track S1) |

@@ -134,7 +134,7 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 | K2 | Traefik 3.7.4 PQC ingress termination | ✅ | ❌ | ✅ |
 | K2 | Linkerd pod↔pod mTLS — PQC **preferred** | ✅ | ❌ | ✅ (handshake captured) |
 | K2 | Istio `COMPLIANCE_POLICY=pqc` — PQC **enforced** | ✅ | ❌ | ✅ (experimental) |
-| S1 | Secretive Enclave auth + PQC KEX | ✅ | classical (hardware) | ✗ interactive — [walkthrough](docs/secretive-pqc-ssh.md) |
+| S1 | Secretive Enclave auth + PQC KEX | ✅ | classical (hardware) | ✅ E23 — [walkthrough](docs/secretive-pqc-ssh.md) |
 | S5 | Enclave **ML-DSA-87** → OpenSSH 10.4 | ✅ | ❌ **non-interop** | ✅ measured negative (E22) |
 | — | Linux: full suite on Debian 13 arm64 | ✅ | ✅ | ✅ |
 | — | Linux: full suite on amd64 | ✅ | ✅ | ✅ (emulated) |

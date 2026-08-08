@@ -133,11 +133,22 @@ fingerprint.
 
 ### What success looks like
 
+Real captured output (2026-08-09, recorded as **E23**):
+
 ```
-debug1: kex: algorithm: mlkem768x25519-sha256          <- PQC KEM
-debug1: Server accepts key: pqc-demo ECDSA SHA256:...  <- offered from the agent
-Authenticated to 127.0.0.1 ([127.0.0.1]:2222) using "publickey".
-enclave+pqc OK
+debug1: kex: algorithm: mlkem768x25519-sha256                       <- PQC KEM
+debug1: get_agent_identities: agent returned 4 keys
+debug1: Offering public key: renaudb1999@gmail.com ECDSA ... agent  <- from the Enclave
+debug1: Server accepts key:  renaudb1999@gmail.com ECDSA ... agent
+Authenticated to 127.0.0.1 ([127.0.0.1]:2225) using "publickey".
+Darwin arm64
+```
+
+and server-side:
+
+```
+Accepted key ECDSA SHA256:xFjDeZr0Zpo... found at .../authorized_keys:1
+Accepted publickey for bechaderenaud from 127.0.0.1 ... ECDSA SHA256:xFjDeZr0Zpo...
 ```
 
 Three things worth reading carefully:
@@ -337,9 +348,11 @@ fix is to run the command where you can see and answer the prompt.
 `SSH_AUTH_SOCK` is not pointing at Secretive. Check it against §0. Secretive's
 Setup window will re-print the correct value, or set it in your shell profile.
 
-**Your own keys get offered before the demo key.**
-With several keys in the agent, `ssh` tries them in order and the server may
-close the connection after too many failures. Restrict it to the one you want:
+**`Too many authentication failures` before your key is reached.**
+A populated agent plus `~/.ssh` file keys can exceed the server's `MaxAuthTries`
+(default **6**) before the right key comes up — and the client is dropped, which
+looks like rejection rather than exhaustion. Measured: 4 agent keys + 5 file
+keys hit the limit. Restrict it to the one you want:
 
 ```
 ssh ... -o IdentityAgent="$SSH_AUTH_SOCK" -o IdentitiesOnly=yes -i ssh-demo/pqc-demo.pub
