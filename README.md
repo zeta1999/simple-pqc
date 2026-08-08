@@ -51,6 +51,7 @@ make test         # run every locally-verifiable experiment (E5-E8, E15)
 make docker       # Track 6: multi-arch images (needs a Docker daemon)
 make k3s-probe HOST=<node>   # Track K1: probe k3s for PQC KEM (needs a cluster)
 make mesh         # Track K2: Traefik ingress + Linkerd + Istio (Docker + kubectl)
+make multinode    # Track K1: two-node k3s, PQC on apiserver/kubelet/etcd
 
 ./scripts/docker-linux-verify.sh        # Linux verification, all six steps
 ./scripts/docker-linux-verify.sh 2      # just the k3s apiserver probe
@@ -58,6 +59,7 @@ PLATFORM=linux/amd64 ./scripts/docker-linux-verify.sh 1   # the suite on amd64
 
 ./scripts/k2-mesh-verify.sh             # Track K2, all three steps
 ./scripts/k2-mesh-verify.sh 3           # just Istio (rebuilds the cluster)
+./scripts/k1-multinode-verify.sh        # two-node k3s control-plane probe
 ```
 
 All experiments, with their **real captured output**, are documented in
@@ -94,7 +96,8 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 | 5 | Fully-PQC mTLS, ML-DSA-65 certs — openssl | ✅ | ✅ | ✅ |
 | 5 | Fully-PQC mTLS, ML-DSA-65 certs — Rust + interop | ✅ | ✅ | ✅ |
 | 6 | Multi-arch containers (arm64 + amd64) | ✅ | classical | ✅ (amd64 emulated) |
-| K1 | k3s PQC probe + analysis (`docs/k3s-pqc.md`) | ✅ | ❌ | ✅ (v1.36.2, apiserver only) |
+| K1 | k3s PQC probe + analysis (`docs/k3s-pqc.md`) | ✅ | ❌ | ✅ (v1.36.2, apiserver) |
+| K1 | two-node k3s: apiserver + both kubelets + etcd | ✅ | ❌ | ✅ (5/5 endpoints) |
 | S2 | mac → linux sshd, arm64 + amd64 | ✅ | classical | ✅ |
 | S3 | Legacy LTS: no mlkem, `sntrup761` fallback | ⚠️ | ❌ | ✅ |
 | S4 | Experimental ML-DSA SSH auth (OpenSSH 10.4) | ✅ | ✅ | ✅ (Debian sid) |
@@ -108,8 +111,9 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 Everything above was verified on macOS arm64; the Linux, k3s and mesh rows were
 verified in containers on that same host (`scripts/docker-linux-verify.sh`,
 `scripts/k2-mesh-verify.sh`), and the amd64 legs ran under emulation. **No
-native amd64 machine and no multi-node cluster were tested** — those are the
-remaining untested axes.
+native amd64 machine was tested**, and cross-node *pod* traffic (flannel
+VXLAN) is unproven — those are the remaining untested axes. The multi-node
+*control* plane is verified.
 
 The two meshes prove *different* things, which is the K2 headline: Linkerd
 offers `0x11ec,0x001d,0x0017,0x0018` — PQC first, classical still available.

@@ -14,7 +14,7 @@ proves — *KEM* (post-quantum key exchange, beats harvest-now-decrypt-later) vs
 | Host | macOS 26 (Tahoe), Apple Silicon (arm64) |
 | Linux | verified 2026-08-01 in containers on the same host (Debian 13 / Debian sid, arm64) — see E10–E12 and [`docs/linux-support.md`](docs/linux-support.md) |
 | amd64 | verified 2026-08-08 under emulation (E19) — no native amd64 silicon was tested |
-| Cluster | k3s v1.36.2 (single privileged container) · Traefik 3.7.4 · Linkerd edge-26.8.1 · Istio 1.30.3 — see E16–E18 and [`docs/k3s-pqc.md`](docs/k3s-pqc.md) |
+| Cluster | k3s v1.36.2 (single container; two-node for E20) · Traefik 3.7.4 · Linkerd edge-26.8.1 · Istio 1.30.3 — see E16–E18 and [`docs/k3s-pqc.md`](docs/k3s-pqc.md) |
 | OpenSSL | 3.6.3 (`/opt/homebrew/bin/openssl`) — PATH `openssl` is miniconda 3.0.17 (no PQC), `/usr/bin/openssl` is LibreSSL |
 | Go | 1.26.2 |
 | Rust | 1.95.0 · rustls 0.23 + aws-lc-rs · tokio-rustls 0.26 |
@@ -564,12 +564,53 @@ genuinely untested axis.
 
 ---
 
+## E20 — two-node k3s: cross-node control plane · `./scripts/k1-multinode-verify.sh` *(Track K1)*
+
+**Proves:** KEM = post-quantum on **every control-plane endpoint of a real
+two-node cluster**, including a kubelet on a *different* node from the
+apiserver, and both etcd ports. Zero configuration. PKI stays classical.
+
+Every other k3s result in this repo is a single container, which never puts
+cross-node traffic on the wire. This runs `server` + `agent` on their own docker
+network with **embedded etcd** (`--cluster-init`) and probes from a third
+container:
+
+```
+$ ./scripts/k1-multinode-verify.sh
+NAME      STATUS   ROLES                AGE   VERSION
+agent0    Ready    <none>               6s    v1.36.2+k3s1
+server0   Ready    control-plane,etcd   18s   v1.36.2+k3s1
+
+probe openssl: OpenSSL 3.5.7 9 Jun 2026
+pqc-k3s-server:6443        -> X25519MLKEM768     # kube-apiserver
+pqc-k3s-server:10250       -> X25519MLKEM768     # kubelet, control-plane node
+pqc-k3s-agent:10250        -> X25519MLKEM768     # kubelet, WORKER node
+pqc-k3s-server:2379        -> X25519MLKEM768     # etcd client
+pqc-k3s-server:2380        -> X25519MLKEM768     # etcd peer
+
+PASS multi-node: all 5 endpoints negotiated X25519MLKEM768 (5/5)
+```
+
+`pqc-k3s-agent:10250` is the cross-node leg — a kubelet on a different node,
+reached over the container network. This is the endpoint set PLAN Track K1 named.
+
+**Worth knowing:** `:2379`/`:2380` exist **only because of `--cluster-init`**. A
+default single-server k3s uses sqlite and has no etcd listener at all, so an
+etcd probe against a stock k3s isn't a failure — there is nothing listening.
+
+**Scope:** control plane only. Cross-node *pod* traffic is encapsulated in
+flannel VXLAN, so proving mesh mTLS between pods on different nodes needs the
+capture taken inside the tunnel — not done here.
+
+---
+
 ## Not yet run
 
 - **Native amd64 hardware** — E19 covers the amd64 toolchain under emulation;
   real silicon is untested (no such machine available here).
-- **Multi-node clusters** — every k3s result is a single privileged container.
-  Cross-node kubelet/etcd traffic was never exercised.
+- **Cross-node pod-to-pod mesh traffic** — E20 covers the multi-node *control*
+  plane; E17/E18 proved mesh mTLS but on a single node. Pod traffic between
+  nodes rides flannel VXLAN and would need the capture taken inside the tunnel.
 - **Track S1 (Secretive)** — needs an interactive Touch ID tap, so it cannot be
   scripted; the recipe is in E6.
 
@@ -595,3 +636,4 @@ genuinely untested axis.
 | E17 | Linkerd pod↔pod mTLS (PQC preferred) | ✅ | ❌ | PASS (Track K2) |
 | E18 | Istio `COMPLIANCE_POLICY=pqc` (PQC enforced) | ✅ | ❌ | PASS (experimental, Track K2) |
 | E19 | full suite on amd64 (emulated) | ✅ | ✅ | PASS |
+| E20 | two-node k3s control plane (5 endpoints) | ✅ | ❌ | PASS (Track K1) |

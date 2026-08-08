@@ -85,7 +85,33 @@ P-256, and cert-manager's ML-DSA support is blocked on Go 1.27.
 3.6.10, and Istio's `pqc` policy is present in **1.30.3** (documented in-binary
 as enforcing X25519MLKEM768 + TLS 1.3 + AES-GCM suites).
 
+## Multi-node control plane verified (2026-08-08)
+
+`scripts/k1-multinode-verify.sh` (`make multinode`) brings up a **real two-node
+cluster** — `server` + `agent` on their own docker network, with **embedded
+etcd** via `--cluster-init` — and probes every control-plane endpoint from a
+third container:
+
+```
+agent0    Ready    <none>               v1.36.2+k3s1
+server0   Ready    control-plane,etcd   v1.36.2+k3s1
+
+pqc-k3s-server:6443        -> X25519MLKEM768     # kube-apiserver
+pqc-k3s-server:10250       -> X25519MLKEM768     # kubelet, control-plane node
+pqc-k3s-agent:10250        -> X25519MLKEM768     # kubelet, WORKER node
+pqc-k3s-server:2379        -> X25519MLKEM768     # etcd client
+pqc-k3s-server:2380        -> X25519MLKEM768     # etcd peer
+```
+
+That is the full endpoint set PLAN Track K1 named, and `pqc-k3s-agent:10250` is
+the genuinely cross-node leg. **Still zero configuration.**
+
+**`--cluster-init` is load-bearing.** A default single-server k3s uses sqlite and
+has **no etcd listener at all**, so probing `:2379` against a stock k3s finds
+nothing listening — that is not a PQC failure, there is simply no etcd.
+
 ## Still not verified here
 
-Multi-node clusters (every result above is a single privileged container, so
-cross-node kubelet/etcd traffic was never exercised) and native amd64 silicon.
+Cross-node **pod** traffic (it rides flannel VXLAN, so a mesh capture would have
+to be taken inside the tunnel — E17/E18 proved mesh mTLS on a single node) and
+native amd64 silicon.
