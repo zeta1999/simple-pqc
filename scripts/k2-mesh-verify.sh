@@ -14,10 +14,18 @@
 # groups the proxy is *configured* to offer, which is not the same claim as which
 # group the peers actually *negotiated*. We assert the ServerHello selection.
 #
+# The Linkerd and Istio installs pull a CLI over the network and apply a lot of
+# manifests; either can be flaky. A component that cannot be installed is
+# SKIPPED with a reason, not failed -- only a real PQC assertion failure is a
+# FAIL. So a broken Istio install still gets you the Traefik and Linkerd results.
+#
 #   ./scripts/k2-mesh-verify.sh          # all three
 #   ./scripts/k2-mesh-verify.sh 1        # ingress only (skips the mesh installs)
 #   ./scripts/k2-mesh-verify.sh 3        # istio only -- it rebuilds the cluster,
 #                                        #   since a cluster holds one mesh
+#   SKIP_ISTIO=1 ./scripts/k2-mesh-verify.sh    # keep [1]+[2], drop the flaky one
+#   SKIP_LINKERD=1 ./scripts/k2-mesh-verify.sh
+#   STRICT=1 ./scripts/k2-mesh-verify.sh # treat any SKIP as a failure (CI)
 #   KEEP=1 ./scripts/k2-mesh-verify.sh   # leave the cluster up for poking at
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,7 +47,7 @@ command -v kubectl >/dev/null 2>&1 || { echo "ERROR: kubectl not found."; exit 1
 
 mkdir -p "$WORK"
 export KUBECONFIG="$WORK/kubeconfig.yaml"
-pass=0; fail=0; note=()
+pass=0; fail=0; skip=0; note=()
 
 cleanup() {
   [ -n "${KEEP:-}" ] && { echo; echo "KEEP=1: cluster left up. export KUBECONFIG=$KUBECONFIG"; return; }
@@ -182,8 +190,12 @@ if [[ " $sel " == *" 2 "* ]]; then
     curl -sSfL "https://github.com/linkerd/linkerd2/releases/download/$LINKERD_VER/linkerd2-cli-$LINKERD_VER-$LD_ARCH" -o "$LD" && chmod +x "$LD"
   fi
 
-  if [ ! -x "$LD" ]; then
-    note+=("FAIL [2] could not obtain the linkerd CLI"); fail=$((fail+1))
+  if [ -n "${SKIP_LINKERD:-}" ]; then
+    echo "SKIP: SKIP_LINKERD set"
+    note+=("SKIP [2] linkerd -- SKIP_LINKERD set"); skip=$((skip+1))
+  elif [ ! -x "$LD" ]; then
+    echo "SKIP: could not download the linkerd CLI ($LINKERD_VER/$LD_ARCH)"
+    note+=("SKIP [2] linkerd -- CLI download failed"); skip=$((skip+1))
   else
     "$LD" install --crds 2>/dev/null | kubectl apply -f - >/dev/null 2>&1
     "$LD" install 2>/dev/null | kubectl apply -f - >/dev/null 2>&1
@@ -261,8 +273,12 @@ if [[ " $sel " == *" 3 "* ]]; then
   fi
   ISTIOCTL="$ISTIO_DIR/bin/istioctl"
 
-  if [ ! -x "$ISTIOCTL" ]; then
-    note+=("FAIL [3] could not obtain istioctl"); fail=$((fail+1))
+  if [ -n "${SKIP_ISTIO:-}" ]; then
+    echo "SKIP: SKIP_ISTIO set"
+    note+=("SKIP [3] istio -- SKIP_ISTIO set"); skip=$((skip+1))
+  elif [ ! -x "$ISTIOCTL" ]; then
+    echo "SKIP: could not download istioctl ($ISTIO_VER/$IS_ARCH)"
+    note+=("SKIP [3] istio -- istioctl download failed"); skip=$((skip+1))
   else
     # a mesh per cluster: tear down whatever [1]/[2] built
     start_cluster "traefik,servicelb" || exit 1
@@ -350,8 +366,8 @@ YAML
 fi
 
 echo; echo "======================================================================"
-printf '%s\n' "${note[@]}"
-echo "TOTAL: $pass passed, $fail failed"
+printf '%s\n' ${note[@]+"${note[@]}"}
+echo "TOTAL: $pass passed, $fail failed, $skip skipped"
 cat <<'NOTE'
 
 Scope: this is the KEM half only. Linkerd's workload identity is ECDSA P-256 and
@@ -359,4 +375,8 @@ Traefik served a classical Ed25519 cert -- no mesh or ingress issues ML-DSA yet
 (cert-manager #8929 is blocked on Go 1.27). So cluster traffic resists
 harvest-now-decrypt-later today, while identity stays classical.
 NOTE
+if [ "$skip" -gt 0 ] && [ -n "${STRICT:-}" ]; then
+  echo "STRICT=1: treating $skip skipped section(s) as failure"
+  exit 1
+fi
 [ "$fail" -eq 0 ]

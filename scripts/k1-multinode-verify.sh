@@ -15,8 +15,15 @@
 # 1.24+ toolchain that k8s >= 1.33 is built with. Cluster PKI stays classical
 # (ECDSA P-256); nothing here issues ML-DSA certs.
 #
+# [2] needs a Linkerd install (CLI download + Gateway API CRDs + manifests),
+# which is the flaky part. If any of that cannot be set up the section is
+# SKIPPED with a reason rather than failed, so [1] still reports. Section [1]
+# needs nothing but Docker.
+#
 #   ./scripts/k1-multinode-verify.sh          # both
 #   ./scripts/k1-multinode-verify.sh 1        # control plane only (no Linkerd)
+#   SKIP_LINKERD=1 ./scripts/k1-multinode-verify.sh   # same, via env
+#   STRICT=1 ./scripts/k1-multinode-verify.sh # treat any SKIP as a failure (CI)
 #   KEEP=1 ./scripts/k1-multinode-verify.sh   # leave the cluster up
 set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,7 +41,7 @@ PROBE_IMAGE="${PROBE_IMAGE:-alpine:3.22}"
 docker info >/dev/null 2>&1 || { echo "ERROR: Docker engine not reachable."; exit 1; }
 mkdir -p "$WORK"
 export KUBECONFIG="$WORK/kubeconfig.yaml"
-pass=0; fail=0; note=()
+pass=0; fail=0; skip=0; note=()
 
 cleanup() {
   [ -n "${KEEP:-}" ] && { echo; echo "KEEP=1: cluster left up. export KUBECONFIG=$KUBECONFIG"; return; }
@@ -126,8 +133,12 @@ if [[ " $sel " == *" 2 "* ]]; then
     curl -sSfL "https://github.com/linkerd/linkerd2/releases/download/$LINKERD_VER/linkerd2-cli-$LINKERD_VER-$LD_ARCH" -o "$LD" && chmod +x "$LD"
   fi
 
-  if [ ! -x "$LD" ]; then
-    note+=("FAIL [2] could not obtain the linkerd CLI"); fail=$((fail+1))
+  if [ -n "${SKIP_LINKERD:-}" ]; then
+    echo "SKIP: SKIP_LINKERD set"
+    note+=("SKIP [2] cross-node pod mTLS -- SKIP_LINKERD set"); skip=$((skip+1))
+  elif [ ! -x "$LD" ]; then
+    echo "SKIP: could not download the linkerd CLI ($LINKERD_VER/$LD_ARCH)"
+    note+=("SKIP [2] cross-node pod mTLS -- CLI download failed"); skip=$((skip+1))
   else
     # Linkerd requires the Gateway API CRDs. k3s normally gets them from its
     # bundled Traefik -- which is disabled here, so install them explicitly or
@@ -138,6 +149,16 @@ if [[ " $sel " == *" 2 "* ]]; then
     "$LD" install 2>/dev/null | kubectl apply -f - >/dev/null 2>&1
     kubectl -n linkerd rollout status deploy/linkerd-destination --timeout=420s 2>&1 | tail -1
     kubectl -n linkerd rollout status deploy/linkerd-proxy-injector --timeout=420s 2>&1 | tail -1
+  fi
+
+  # A failed render leaves no namespace at all -- distinguish "could not install"
+  # from "installed and the PQC assertion failed", which are very different results.
+  if [ "${skip:-0}" -eq 0 ] && ! kubectl -n linkerd get deploy linkerd-proxy-injector >/dev/null 2>&1; then
+    echo "SKIP: linkerd control plane did not come up (render or apply failed)"
+    "$LD" install --crds >/dev/null 2>"$WORK/linkerd.err" || true
+    [ -s "$WORK/linkerd.err" ] && { echo "-- linkerd said --"; head -4 "$WORK/linkerd.err"; }
+    note+=("SKIP [2] cross-node pod mTLS -- linkerd control plane unavailable"); skip=$((skip+1))
+  elif [ "${skip:-0}" -eq 0 ]; then
 
     kubectl create namespace xnode >/dev/null 2>&1
     kubectl annotate namespace xnode linkerd.io/inject=enabled --overwrite >/dev/null 2>&1
@@ -205,8 +226,8 @@ fi
 
 echo
 echo "======================================================================"
-printf '%s\n' "${note[@]}"
-echo "TOTAL: $pass passed, $fail failed"
+printf '%s\n' ${note[@]+"${note[@]}"}
+echo "TOTAL: $pass passed, $fail failed, $skip skipped"
 cat <<'NOTE'
 
 The control-plane cross-node leg is pqc-k3s-agent:10250 -- a kubelet on a
@@ -221,4 +242,8 @@ node boundary rather than being served by a co-located pod.
 
 Identity stays classical throughout -- Linkerd issues ECDSA P-256 workload certs.
 NOTE
+if [ "$skip" -gt 0 ] && [ -n "${STRICT:-}" ]; then
+  echo "STRICT=1: treating $skip skipped section(s) as failure"
+  exit 1
+fi
 [ "$fail" -eq 0 ]

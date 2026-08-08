@@ -252,6 +252,6 @@ if [[ " $sel " == *" 6 "* ]]; then
 fi
 
 echo; echo "======================================================================"
-printf '%s\n' "${note[@]}"
+printf '%s\n' ${note[@]+"${note[@]}"}
 echo "TOTAL: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

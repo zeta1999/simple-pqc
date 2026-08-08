@@ -63,6 +63,34 @@ PLATFORM=linux/amd64 ./scripts/docker-linux-verify.sh 1   # the suite on amd64
 ./scripts/k1-multinode-verify.sh 1      # control plane only (skips Linkerd)
 ```
 
+### Running with a partial toolchain
+
+Several experiments need things this repo does not vendor — a sibling checkout,
+an OpenSSL ≥ 3.5, a recent OpenSSH, or a Linkerd/Istio install that pulls a CLI
+and applies a lot of manifests. Any of those can be missing or flaky, so a
+component that **cannot be set up is SKIPPED with a reason, not failed**. Only a
+real PQC assertion failure produces a non-zero exit, so a partial toolchain
+still gives you every result it can:
+
+```
+TOTAL: 2 passed, 0 failed, 3 skipped
+```
+
+Detection is automatic — no sibling checkout means E8 skips itself rather than
+dying on a missing `Cargo.toml`. You can also force it, or demand the opposite:
+
+```
+SKIP_CHANNEL=1 make test      # E8 needs ../simple-network + ../rust-secure-memory
+SKIP_MLDSA=1   make test      # E7/E15 need OpenSSL >= 3.5
+SKIP_SSH=1     make test      # E6 needs sshd + OpenSSH >= 9.9
+SKIP_LINKERD=1 make mesh      # keep Traefik + Istio
+SKIP_ISTIO=1   make mesh      # keep Traefik + Linkerd
+STRICT=1       make test      # CI: treat any SKIP as a failure
+```
+
+`STRICT=1` is the flag to use in CI — it turns "quietly skipped" back into a
+hard error, so a machine that silently lost its PQC OpenSSL cannot report green.
+
 All experiments, with their **real captured output**, are documented in
 [`EXPERIMENTS.md`](EXPERIMENTS.md).
 
