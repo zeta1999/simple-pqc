@@ -50,9 +50,14 @@ make channel      # Track 4: simple-network PQC channel, ML-DSA-65 mutual auth
 make test         # run every locally-verifiable experiment (E5-E8, E15)
 make docker       # Track 6: multi-arch images (needs a Docker daemon)
 make k3s-probe HOST=<node>   # Track K1: probe k3s for PQC KEM (needs a cluster)
+make mesh         # Track K2: Traefik ingress + Linkerd + Istio (Docker + kubectl)
 
-./scripts/docker-linux-verify.sh        # Linux verification, all three steps
+./scripts/docker-linux-verify.sh        # Linux verification, all six steps
 ./scripts/docker-linux-verify.sh 2      # just the k3s apiserver probe
+PLATFORM=linux/amd64 ./scripts/docker-linux-verify.sh 1   # the suite on amd64
+
+./scripts/k2-mesh-verify.sh             # Track K2, all three steps
+./scripts/k2-mesh-verify.sh 3           # just Istio (rebuilds the cluster)
 ```
 
 All experiments, with their **real captured output**, are documented in
@@ -93,13 +98,23 @@ PLAN.md   full roadmap: TLS, SSH (incl. Secretive), k3s/Rancher
 | S2 | mac → linux sshd, arm64 + amd64 | ✅ | classical | ✅ |
 | S3 | Legacy LTS: no mlkem, `sntrup761` fallback | ⚠️ | ❌ | ✅ |
 | S4 | Experimental ML-DSA SSH auth (OpenSSH 10.4) | ✅ | ✅ | ✅ (Debian sid) |
+| K2 | Traefik 3.7.4 PQC ingress termination | ✅ | ❌ | ✅ |
+| K2 | Linkerd pod↔pod mTLS — PQC **preferred** | ✅ | ❌ | ✅ (handshake captured) |
+| K2 | Istio `COMPLIANCE_POLICY=pqc` — PQC **enforced** | ✅ | ❌ | ✅ (experimental) |
 | S1 | Secretive Enclave auth + PQC KEX | ✅ | classical (hardware) | ✗ (interactive) |
 | — | Linux: full suite on Debian 13 arm64 | ✅ | ✅ | ✅ |
+| — | Linux: full suite on amd64 | ✅ | ✅ | ✅ (emulated) |
 
-Everything above was verified on macOS arm64; the Linux, k3s and S4 rows were
-verified in containers on that same host (`scripts/docker-linux-verify.sh`), and
-the amd64 container leg ran under emulation. **No native amd64 machine was
-tested** — that remains the one untested axis.
+Everything above was verified on macOS arm64; the Linux, k3s and mesh rows were
+verified in containers on that same host (`scripts/docker-linux-verify.sh`,
+`scripts/k2-mesh-verify.sh`), and the amd64 legs ran under emulation. **No
+native amd64 machine and no multi-node cluster were tested** — those are the
+remaining untested axes.
+
+The two meshes prove *different* things, which is the K2 headline: Linkerd
+offers `0x11ec,0x001d,0x0017,0x0018` — PQC first, classical still available.
+Istio in `pqc` mode offers **only** `0x11ec`, so a classical-only client is
+refused outright. Default-on vs. enforced.
 
 See [`EXPERIMENTS.md`](EXPERIMENTS.md) for captured output,
 [`docs/linux-support.md`](docs/linux-support.md) for the per-Debian/Ubuntu

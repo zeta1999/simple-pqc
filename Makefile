@@ -2,7 +2,7 @@
 .DEFAULT_GOAL := help
 SHELL := /bin/bash
 
-.PHONY: help certs go rust build run-go run-rust interop prove prove-neg ssh mldsa mldsa-rust channel test docker k3s-probe linux-verify clean
+.PHONY: help certs go rust build run-go run-rust interop prove prove-neg ssh mldsa mldsa-rust channel test docker k3s-probe linux-verify mesh clean
 
 help: ## show this help
 	@grep -hE '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | \
@@ -63,6 +63,9 @@ linux-verify: ## Linux/k3s/SSH verification in containers (needs Docker): make l
 
 k3s-probe: ## Track K1: probe a k3s node for PQC KEM (needs a cluster): make k3s-probe HOST=1.2.3.4
 	./scripts/k3s-probe.sh $(or $(HOST),127.0.0.1)
+
+mesh: ## Track K2: Traefik ingress + Linkerd + Istio PQC (needs Docker + kubectl): make mesh ARGS="1 2"
+	./scripts/k2-mesh-verify.sh $(ARGS)
 
 clean: ## remove generated certs and build artifacts
 	rm -rf certs certs-mldsa go/bin rust/target rust-mldsa/target channel/target ssh-demo ssh-demo-s2

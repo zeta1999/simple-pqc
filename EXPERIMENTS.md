@@ -13,6 +13,8 @@ proves — *KEM* (post-quantum key exchange, beats harvest-now-decrypt-later) vs
 | Date run | 2026-07-30 |
 | Host | macOS 26 (Tahoe), Apple Silicon (arm64) |
 | Linux | verified 2026-08-01 in containers on the same host (Debian 13 / Debian sid, arm64) — see E10–E12 and [`docs/linux-support.md`](docs/linux-support.md) |
+| amd64 | verified 2026-08-08 under emulation (E19) — no native amd64 silicon was tested |
+| Cluster | k3s v1.36.2 (single privileged container) · Traefik 3.7.4 · Linkerd edge-26.8.1 · Istio 1.30.3 — see E16–E18 and [`docs/k3s-pqc.md`](docs/k3s-pqc.md) |
 | OpenSSL | 3.6.3 (`/opt/homebrew/bin/openssl`) — PATH `openssl` is miniconda 3.0.17 (no PQC), `/usr/bin/openssl` is LibreSSL |
 | Go | 1.26.2 |
 | Rust | 1.95.0 · rustls 0.23 + aws-lc-rs · tokio-rustls 0.26 |
@@ -438,13 +440,138 @@ rejection. Asserting client-side made a rejected connection look accepted.
 **Limits:** unstable, pinned to `rustls-post-quantum` 0.2.4 (0.3.0-dev exists);
 not FIPS-validated; Go still cannot participate until 1.27.
 
-## Not yet run (need external infra)
+## E16 — Traefik ingress terminates PQC · `./scripts/k2-mesh-verify.sh 1` *(Track K2)*
 
-- **Track K2 (mesh)** — Linkerd/Istio on k3s, and Traefik PQC ingress
-  termination: not attempted.
-- **Native (non-container) Linux and amd64:** E10–E12 ran in containers on an
-  arm64 macOS host. Kernel-independent by nature, but a real amd64 box is
-  untested.
+**Proves:** KEM = post-quantum at the **cluster edge**, zero configuration. The
+Ingress cert is a classical Ed25519 one — this is the KEM half only.
+
+k3s v1.36.2 with its bundled Traefik **3.7.4**, a `whoami` backend behind a TLS
+Ingress, reached over a real published port (servicelb binds `:443` on the node,
+so this is not a `kubectl port-forward` tunnel).
+
+```
+$ ./scripts/k2-mesh-verify.sh 1
+traefik image: rancher/mirrored-library-traefik:3.7.4
+ingress :18443 -> X25519MLKEM768
+backend response: HTTP/1.1 200 OK
+PASS [1] traefik ingress terminated X25519MLKEM768, backend 200
+```
+
+The request is driven with `openssl s_client`, not `curl`: macOS system curl is
+LibreSSL and has no PQC groups at all.
+
+**Gotcha proven in testing:** Traefik answers **503** for a few seconds after
+`kubectl rollout status` reports the backend rolled out — the Deployment is
+ready before Traefik has observed its Endpoints. The script retries; asserting
+on the first response makes this flake.
+
+---
+
+## E17 — Linkerd pod↔pod mTLS over a PQC KEM · `./scripts/k2-mesh-verify.sh 2` *(Track K2)*
+
+**Proves:** KEM = post-quantum for **pod-to-pod mesh mTLS, on by default**.
+Workload identity stays classical (Linkerd issues ECDSA P-256).
+
+Linkerd `edge-26.8.1`. Two proofs, because they are different claims:
+
+```
+proxy tls_kx_groups : X25519MLKEM768,X25519,secp256r1,secp384r1,
+proxy key provider  : AwsLcRs   (ring would mean no PQC at all)
+outbound requests over mTLS: 34
+ClientHello offered  : 0x11ec,0x001d,0x0017,0x0018
+ServerHello selected : 4588  (want 4588 = 0x11EC = X25519MLKEM768)
+PASS [2] linkerd pod<->pod mTLS negotiated X25519MLKEM768 (captured)
+```
+
+`rustls_info` reports what the proxy is **configured** to offer — PQC first, on
+the aws-lc-rs provider. That is *not* the same claim as what the peers actually
+**negotiated**, so the script also captures the handshake with `tcpdump` on the
+proxy's port 4143 and reads the ServerHello's selected group. Per PLAN gotcha
+\#1: assert the negotiated group, never assume it.
+
+Note Linkerd **prefers** PQC but still offers X25519 and the NIST curves — a
+classical-only peer would be accepted. Contrast E18.
+
+**Gotcha proven in testing:** scraping `/metrics` right after the client pod
+goes Ready reports `0` mTLS requests — `request_total` has no outbound series
+until traffic has actually flowed. The metric is a lagging indicator, not a
+readiness signal.
+
+---
+
+## E18 — Istio `COMPLIANCE_POLICY=pqc` enforces PQC · `./scripts/k2-mesh-verify.sh 3` *(Track K2)*
+
+**Proves:** KEM = post-quantum **and enforced** — a classical-only peer cannot
+connect at all. Istio 1.30.3, sidecar mode, `PeerAuthentication: STRICT`.
+Istio calls this policy *experimental*.
+
+```
+istiod COMPLIANCE_POLICY=pqc
+classical-only client (X25519)   -> REFUSED (alert 40)
+PQC client (X25519MLKEM768)      -> X25519MLKEM768
+mesh ClientHello offered  : 0x11ec   (pqc mode offers ONLY 0x11ec)
+mesh ServerHello selected : 4588
+PASS [3] istio pqc: mesh negotiated X25519MLKEM768, classical refused
+```
+
+**This is the sharp contrast with E17.** Linkerd offered four groups with PQC
+first; Istio in `pqc` mode offers **exactly one**, so there is no classical
+fallback to silently downgrade to. The negative test runs from an *unmeshed*
+pod (`sidecar.istio.io/inject=false`) so it is a genuine outsider: a
+classical-only `openssl s_client` gets `alert number 40`, and the same client
+with `-groups X25519MLKEM768` completes the handshake. **The legacy client's
+failure is the demo** — that is the whole point of the compliance policy.
+
+**Two gotchas proven in testing:**
+1. Istio redirects to the sidecar's `:15006` with iptables **inside** the
+   destination pod, so on the wire the port is still the service port. Capturing
+   `tcp port 15006` yields **zero packets**; capture port 80. (Linkerd differs —
+   it uses an explicit `:4143` on the wire.)
+2. tshark then dissects that traffic as HTTP and finds no TLS. It needs
+   `-d tcp.port==80,tls` to decode it, or the handshake is invisible.
+
+A cluster holds one mesh, so section [3] rebuilds the cluster rather than
+layering Istio on top of Linkerd.
+
+---
+
+## E19 — the full suite on amd64 · `PLATFORM=linux/amd64 ./scripts/docker-linux-verify.sh 1`
+
+**Proves:** every locally-verifiable experiment passes on **amd64**, not just
+the arm64 the rest of this file was captured on.
+
+```
+-- versions --
+OpenSSL 3.5.6 7 Apr 2026
+OpenSSH_10.0p2 Debian-7+deb13u4
+go version go1.26.5 linux/amd64
+rustc 1.97.1 (8bab26f4f 2026-07-14)
+...
+PASS  E5 cross-language interop (Go/Rust/openssl, PQC KEM)
+PASS  E6 PQC SSH to non-root sshd (mlkem768x25519)
+PASS  E7 fully-PQC mTLS (ML-DSA-65 certs)
+PASS  E8 simple-network PQC channel (ML-DSA-65 auth)
+PASS  E15 fully-PQC mTLS in Rust + openssl interop
+TOTAL: 5 passed, 0 failed
+```
+
+**Scope, stated plainly:** this is an amd64 *toolchain and binary* — `go1.26.5
+linux/amd64`, an amd64 rustc, amd64 OpenSSL — executed under emulation on Apple
+Silicon. It covers the architecture dimension of the **code**. It is **not**
+native amd64 silicon, so anything hardware-specific (AES-NI/AVX2 paths inside
+aws-lc-rs, real timing) is still untested. A physical amd64 box remains the one
+genuinely untested axis.
+
+---
+
+## Not yet run
+
+- **Native amd64 hardware** — E19 covers the amd64 toolchain under emulation;
+  real silicon is untested (no such machine available here).
+- **Multi-node clusters** — every k3s result is a single privileged container.
+  Cross-node kubelet/etcd traffic was never exercised.
+- **Track S1 (Secretive)** — needs an interactive Touch ID tap, so it cannot be
+  scripted; the recipe is in E6.
 
 ## Summary
 
@@ -464,3 +591,7 @@ not FIPS-validated; Go still cannot participate until 1.27.
 | E13 | legacy LTS (Ubuntu 24.04, Debian 12) | ⚠️ sntrup761 only | ❌ | PASS (Track S3) |
 | E14 | mac→linux SSH, arm64 + amd64 | ✅ | classical | PASS (Track S2) |
 | E15 | ML-DSA-65 mTLS in Rust + openssl interop | ✅ | ✅ | PASS (experimental, Track 5) |
+| E16 | Traefik 3.7.4 PQC ingress termination | ✅ | ❌ | PASS (Track K2) |
+| E17 | Linkerd pod↔pod mTLS (PQC preferred) | ✅ | ❌ | PASS (Track K2) |
+| E18 | Istio `COMPLIANCE_POLICY=pqc` (PQC enforced) | ✅ | ❌ | PASS (experimental, Track K2) |
+| E19 | full suite on amd64 (emulated) | ✅ | ✅ | PASS |

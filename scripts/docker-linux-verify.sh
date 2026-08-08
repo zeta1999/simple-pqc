@@ -32,9 +32,14 @@ for repo in simple-network rust-secure-memory; do
 done
 
 # --- [1] linux<->linux full suite in Debian 13 -------------------------------
+# PLATFORM=linux/amd64 runs the same suite under emulation on an arm64 host.
+# That covers the ARCH dimension of the code, not real amd64 silicon -- Rosetta
+# still executes amd64 instructions, so a genuine amd64 box remains untested.
 if [[ " $sel " == *" 1 "* ]]; then
-  echo; echo "### [1] Debian 13 (trixie): full suite (E5/E6/E7/E8)"
-  if docker run --rm -v "$ROOT":/src:ro "${sib_mount[@]}" debian:13 bash -euc '
+  plat_args=()
+  [ -n "${PLATFORM:-}" ] && plat_args=(--platform "$PLATFORM")
+  echo; echo "### [1] Debian 13 (trixie): full suite (E5/E6/E7/E8/E15)${PLATFORM:+ [$PLATFORM]}"
+  if docker run --rm -v "$ROOT":/src:ro "${sib_mount[@]}" ${plat_args[@]+"${plat_args[@]}"} debian:13 bash -euc '
       export DEBIAN_FRONTEND=noninteractive
       apt-get update -qq
       apt-get install -y -qq openssh-server openssh-client openssl \
@@ -53,7 +58,7 @@ if [[ " $sel " == *" 1 "* ]]; then
       # drop macOS build artifacts copied in from the host tree
       rm -rf rust/target channel/target go/bin certs certs-mldsa ssh-demo
       ./scripts/run-all.sh
-  '; then note+=("PASS [1] debian:13 full suite"); pass=$((pass+1)); else note+=("FAIL [1] debian:13 full suite"); fail=$((fail+1)); fi
+  '; then note+=("PASS [1] debian:13 full suite${PLATFORM:+ [$PLATFORM]}"); pass=$((pass+1)); else note+=("FAIL [1] debian:13 full suite${PLATFORM:+ [$PLATFORM]}"); fail=$((fail+1)); fi
 fi
 
 # --- [2] k3s control-plane PQC KEM probe -------------------------------------

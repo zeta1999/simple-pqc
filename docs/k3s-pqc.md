@@ -55,7 +55,37 @@ before the Go 1.24 PQC default — which would have shown a false negative. The
 KEM story here is a property of the *toolchain the release was built with*, so
 always check the k3s version's Go version before drawing conclusions.
 
+## Track K2 verified (2026-08-08)
+
+`scripts/k2-mesh-verify.sh` covers the **data plane** on the same k3s v1.36.2:
+
+| # | What | Result |
+|---|---|---|
+| [1] | Traefik **3.7.4** ingress, zero config | `ingress -> X25519MLKEM768`, backend `200 OK` |
+| [2] | **Linkerd** `edge-26.8.1` pod↔pod mTLS | ServerHello selected `4588` (0x11EC) |
+| [3] | **Istio 1.30.3** `COMPLIANCE_POLICY=pqc` | ClientHello offers **only** `0x11ec`; classical client refused |
+
+**The two meshes differ in kind, and it matters for the pitch:**
+
+- **Linkerd is PQC-*preferred*.** Its ClientHello offered
+  `0x11ec,0x001d,0x0017,0x0018` — PQC first, but X25519 and the NIST curves are
+  still on the table. You get HNDL resistance by default with zero config, and a
+  classical-only peer still connects. Good default, no enforcement.
+- **Istio with `COMPLIANCE_POLICY=pqc` is PQC-*enforced*.** Its ClientHello
+  offered `0x11ec` and nothing else, and a classical-only `openssl s_client`
+  from an unmeshed pod got `alert number 40`. There is no group left to
+  downgrade to. Istio labels the policy **experimental**, and it must be set on
+  pilot **and** ztunnel (ambient) to be effective.
+
+So: *Linkerd for "PQC by default, nothing to do"; Istio for "PQC or you don't
+connect."* Neither does PQC **identity** — Linkerd's workload certs are ECDSA
+P-256, and cert-manager's ML-DSA support is blocked on Go 1.27.
+
+**Correction to the table above:** k3s v1.36.2 bundles Traefik **3.7.4**, not
+3.6.10, and Istio's `pqc` policy is present in **1.30.3** (documented in-binary
+as enforcing X25519MLKEM768 + TLS 1.3 + AES-GCM suites).
+
 ## Still not verified here
 
-Traefik ingress termination, in-cluster workload mTLS, Linkerd/Istio (Track K2),
-and multi-node / amd64 clusters. Only the apiserver endpoint was probed.
+Multi-node clusters (every result above is a single privileged container, so
+cross-node kubelet/etcd traffic was never exercised) and native amd64 silicon.
